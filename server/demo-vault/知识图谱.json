@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-29",
+  "nodes": [
+    {
+      "id": "python-basics",
+      "title": "Python 基础语法",
+      "field": "编程",
+      "mastery": 8,
+      "status": "mastered",
+      "note": "知识图谱/Python基础语法.md",
+      "updatedAt": "2026-08-18"
+    },
+    {
+      "id": "functions",
+      "title": "函数与作用域",
+      "field": "编程",
+      "mastery": 7,
+      "status": "mastered",
+      "note": "笔记/编程/基础/note/note/函数与作用域.md",
+      "updatedAt": "2026-08-19"
+    },
+    {
+      "id": "lists-dicts",
+      "title": "列表与字典",
+      "field": "编程",
+      "mastery": 8,
+      "status": "mastered",
+      "note": "",
+      "updatedAt": "2026-08-18"
+    },
+    {
+      "id": "recursion",
+      "title": "递归",
+      "field": "算法",
+      "mastery": 7,
+      "status": "mastered",
+      "note": "笔记/算法/基础/note/note/递归.md",
+      "updatedAt": "2026-08-20"
+    },
+    {
+      "id": "markdown",
+      "title": "Markdown 语法",
+      "field": "工具",
+      "mastery": 9,
+      "status": "mastered",
+      "note": "",
+      "updatedAt": "2026-08-15"
+    },
+    {
+      "id": "http-basics",
+      "title": "HTTP 基础",
+      "field": "计算机网络",
+      "mastery": 6,
+      "status": "mastered",
+      "note": "笔记/计算机网络/基础/note/note/HTTP基础.md",
+      "updatedAt": "2026-08-22"
+    },
+    {
+      "id": "dynamic-programming",
+      "title": "动态规划",
+      "field": "算法",
+      "mastery": 3,
+      "status": "learning",
+      "note": "",
+      "updatedAt": "2026-08-25"
+    },
+    {
+      "id": "memoization",
+      "title": "记忆化搜索",
+      "field": "算法",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "tree-dfs",
+      "title": "二叉树与深度优先遍历",
+      "field": "算法",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "big-o",
+      "title": "时间复杂度分析",
+      "field": "算法",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "sorting-algorithms",
+      "title": "排序算法",
+      "field": "算法",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "generators",
+      "title": "生成器与迭代器",
+      "field": "编程",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "async-python",
+      "title": "Python 异步编程",
+      "field": "编程",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "https-tls",
+      "title": "HTTPS 与 TLS 握手",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "rest-api",
+      "title": "REST API 设计",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "bitwise-ops",
+      "title": "位运算与异或",
+      "field": "算法",
+      "mastery": 5,
+      "status": "learning",
+      "note": "笔记/编程/位运算/note/note/位运算基础.md",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "bitmask-dp",
+      "title": "状态压缩 DP",
+      "field": "算法",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "bitmap",
+      "title": "位图与布隆过滤器",
+      "field": "数据结构",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": ""
+    },
+    {
+      "id": "linux-basics",
+      "title": "Linux 命令行基础",
+      "field": "系统运维",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "dns",
+      "title": "DNS 域名解析",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx 配置与部署",
+      "field": "系统运维",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "tls-handshake",
+      "title": "TLS 握手过程",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "pki",
+      "title": "PKI 公钥基础设施",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "acme",
+      "title": "Let's Encrypt / ACME 协议",
+      "field": "计算机网络",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "aliyun-ecs",
+      "title": "阿里云 ECS 与安全组",
+      "field": "系统运维",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "certbot",
+      "title": "Certbot 工具",
+      "field": "系统运维",
+      "mastery": 0,
+      "status": "learnable",
+      "note": "",
+      "updatedAt": "2026-08-28"
+    }
+  ],
+  "edges": [
+    {
+      "from": "functions",
+      "to": "python-basics",
+      "type": "depends-on"
+    },
+    {
+      "from": "lists-dicts",
+      "to": "python-basics",
+      "type": "depends-on"
+    },
+    {
+      "from": "recursion",
+      "to": "functions",
+      "type": "depends-on"
+    },
+    {
+      "from": "functions",
+      "to": "recursion",
+      "type": "leads-to"
+    },
+    {
+      "from": "recursion",
+      "to": "memoization",
+      "type": "leads-to"
+    },
+    {
+      "from": "memoization",
+      "to": "dynamic-programming",
+      "type": "leads-to"
+    },
+    {
+      "from": "dynamic-programming",
+      "to": "recursion",
+      "type": "depends-on"
+    },
+    {
+      "from": "recursion",
+      "to": "tree-dfs",
+      "type": "leads-to"
+    },
+    {
+      "from": "big-o",
+      "to": "lists-dicts",
+      "type": "depends-on"
+    },
+    {
+      "from": "sorting-algorithms",
+      "to": "lists-dicts",
+      "type": "depends-on"
+    },
+    {
+      "from": "sorting-algorithms",
+      "to": "big-o",
+      "type": "relates-to"
+    },
+    {
+      "from": "functions",
+      "to": "generators",
+      "type": "leads-to"
+    },
+    {
+      "from": "async-python",
+      "to": "python-basics",
+      "type": "depends-on"
+    },
+    {
+      "from": "generators",
+      "to": "async-python",
+      "type": "relates-to"
+    },
+    {
+      "from": "https-tls",
+      "to": "http-basics",
+      "type": "depends-on"
+    },
+    {
+      "from": "http-basics",
+      "to": "https-tls",
+      "type": "leads-to"
+    },
+    {
+      "from": "http-basics",
+      "to": "rest-api",
+      "type": "leads-to"
+    },
+    {
+      "from": "python-basics",
+      "to": "bitwise-ops",
+      "type": "leads-to"
+    },
+    {
+      "from": "bitwise-ops",
+      "to": "recursion",
+      "type": "relates-to"
+    },
+    {
+      "from": "bitwise-ops",
+      "to": "big-o",
+      "type": "relates-to"
+    },
+    {
+      "from": "bitwise-ops",
+      "to": "bitmask-dp",
+      "type": "leads-to"
+    },
+    {
+      "from": "bitmask-dp",
+      "to": "dynamic-programming",
+      "type": "depends-on"
+    },
+    {
+      "from": "bitmask-dp",
+      "to": "recursion",
+      "type": "depends-on"
+    },
+    {
+      "from": "http-basics",
+      "to": "tls-handshake",
+      "type": "leads-to"
+    },
+    {
+      "from": "tls-handshake",
+      "to": "pki",
+      "type": "leads-to"
+    },
+    {
+      "from": "pki",
+      "to": "acme",
+      "type": "leads-to"
+    },
+    {
+      "from": "tls-handshake",
+      "to": "https-tls",
+      "type": "relates-to"
+    },
+    {
+      "from": "dns",
+      "to": "http-basics",
+      "type": "relates-to"
+    },
+    {
+      "from": "linux-basics",
+      "to": "nginx",
+      "type": "leads-to"
+    },
+    {
+      "from": "nginx",
+      "to": "certbot",
+      "type": "leads-to"
+    },
+    {
+      "from": "nginx",
+      "to": "https-tls",
+      "type": "leads-to"
+    },
+    {
+      "from": "aliyun-ecs",
+      "to": "linux-basics",
+      "type": "depends-on"
+    },
+    {
+      "from": "aliyun-ecs",
+      "to": "dns",
+      "type": "leads-to"
+    },
+    {
+      "from": "certbot",
+      "to": "acme",
+      "type": "depends-on"
+    }
+  ]
+}

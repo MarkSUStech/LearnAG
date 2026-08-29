@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LearnAgent · 学习知识库</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // 运行时错误显示器（便于排查；正常使用时不显示任何内容）
+      function showError(text) {
+        var d = document.createElement('pre')
+        d.style.cssText =
+          'position:fixed;top:0;left:0;right:0;z-index:99999;margin:0;padding:10px 14px;background:#fde8e8;color:#8a1f1f;white-space:pre-wrap;font:12px/1.5 monospace;max-height:45vh;overflow:auto'
+        d.textContent = text
+        document.body.appendChild(d)
+      }
+      window.addEventListener('error', function (e) {
+        showError((e.error && e.error.stack) || e.message)
+      })
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason
+        showError(r && r.stack ? r.stack : String(r))
+      })
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
