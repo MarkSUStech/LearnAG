@@ -25,12 +25,18 @@ interface Props {
   onRenameSession: (id: string, title: string) => void
   onOpenSwitcher: () => void
   agentRunning: boolean
+  width: number
+  onResizeStart: (e: React.MouseEvent) => void
 }
 
 export default function Sidebar(props: Props) {
-  const { tree, vaultName } = props
+  const { tree, vaultName, collapsed, width } = props
   return (
-    <aside className={`sidebar ${props.collapsed ? 'collapsed' : ''}`}>
+    <aside
+      className={`sidebar ${collapsed ? 'collapsed' : ''}`}
+      style={{ width: collapsed ? 0 : width }}
+    >
+      <div className="resize-handle right" onMouseDown={props.onResizeStart} />
       <div className="side-head">
         <div className="logo">
           <span className="material-symbols-rounded">psychology</span>
@@ -58,7 +64,7 @@ export default function Sidebar(props: Props) {
       </div>
 
       <div className="sessions">
-        <div className="sessions-head">
+        <div className="side-section-title">
           <span>对话</span>
           <button
             className="icon-btn"
@@ -101,6 +107,10 @@ export default function Sidebar(props: Props) {
       </div>
 
       <div className="tree">
+        <div className="side-section-title" style={{ paddingTop: 8 }}>
+          <span>文件</span>
+          <span style={{ width: 28 }} />
+        </div>
         {tree.length === 0 && <div className="tree-empty">知识库是空的，新建一篇笔记开始吧</div>}
         {tree.map((node) => (
           <TreeItem key={node.path} node={node} {...props} depth={0} />

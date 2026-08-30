@@ -52,6 +52,39 @@ export default function App() {
   const [learnedFlow, setLearnedFlow] = useState<string | null>(null) // 正在检查掌握情况的笔记路径
   const [celebratePath, setCelebratePath] = useState<string | null>(null)
   const [tutorFor, setTutorFor] = useState<string | null>(null) // 答疑面板绑定的笔记路径
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const w = Number(localStorage.getItem('la-sidebar-w'))
+    return w >= 180 && w <= 440 ? w : 248
+  })
+  const [tutorWidth, setTutorWidth] = useState(() => {
+    const w = Number(localStorage.getItem('la-tutor-w'))
+    return w >= 300 && w <= 640 ? w : 400
+  })
+
+  // 侧栏拖拽调宽（sidebar 向右拖 / tutor 向左拖）
+  function startResize(e: React.MouseEvent, kind: 'sidebar' | 'tutor') {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = kind === 'sidebar' ? sidebarWidth : tutorWidth
+    let last = startW
+    function onMove(ev: MouseEvent) {
+      const delta = kind === 'sidebar' ? ev.clientX - startX : startX - ev.clientX
+      last = Math.min(kind === 'sidebar' ? 440 : 640, Math.max(kind === 'sidebar' ? 180 : 300, startW + delta))
+      if (kind === 'sidebar') setSidebarWidth(last)
+      else setTutorWidth(last)
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem(kind === 'sidebar' ? 'la-sidebar-w' : 'la-tutor-w', String(last))
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
   const learnedFlowRef = useRef<string | null>(null)
   learnedFlowRef.current = learnedFlow
 
@@ -536,6 +569,8 @@ export default function App() {
     <div className="app">
       <Sidebar
         collapsed={sidebarCollapsed}
+        width={sidebarWidth}
+        onResizeStart={(e) => startResize(e, 'sidebar')}
         tree={tree}
         activePath={activeNotePath}
         onOpen={(p) => void openNote(p)}
@@ -652,6 +687,8 @@ export default function App() {
                 <TutorPanel
                   notePath={activeNotePath}
                   noteTitle={activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}
+                  width={tutorWidth}
+                  onResizeStart={(e) => startResize(e, 'tutor')}
                   onClose={() => setTutorFor(null)}
                 />
               )}

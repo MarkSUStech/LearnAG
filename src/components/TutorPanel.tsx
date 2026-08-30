@@ -11,13 +11,15 @@ interface Message {
 interface Props {
   notePath: string
   noteTitle: string
+  width: number
+  onResizeStart: (e: React.MouseEvent) => void
   onClose: () => void
 }
 
 const ROLES: TutorRole[] = ['socratic', 'feynman', 'quick']
 
 /** 笔记答疑助手：右侧抽屉面板，会话绑定当前笔记 */
-export default function TutorPanel({ notePath, noteTitle, onClose }: Props) {
+export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, onClose }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [role, setRole] = useState<TutorRole>('quick')
   const [input, setInput] = useState('')
@@ -116,7 +118,8 @@ export default function TutorPanel({ notePath, noteTitle, onClose }: Props) {
   }
 
   return (
-    <div className="tutor-panel">
+    <div className="tutor-panel" style={{ width }}>
+      <div className="resize-handle left" onMouseDown={onResizeStart} />
       <div className="tutor-head">
         <span className="material-symbols-rounded">forum</span>
         <span className="tutor-title" title={notePath}>
