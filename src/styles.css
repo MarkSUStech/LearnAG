@@ -992,6 +992,8 @@ html[data-theme='dark'] .milkdown {
 }
 .mermaid-diagram svg {
   max-width: 100%;
+  max-height: 430px; /* D2/gnuplot 大图等比缩到可视高度，小图不受影响 */
+  width: auto;
   height: auto;
 }
 /* KaTeX 独立公式过长时横向滚动 */
