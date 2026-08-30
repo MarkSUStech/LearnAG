@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { renderRichMarkdown, stripMd } from './md'
+import { renderRichMarkdown, stripMd, renderRemoteDiagramsIn } from './md'
 import { ensureMermaid } from './editor/mermaidNodeView'
 import { isBeautifulSupported, renderBeautiful } from './editor/beautifulMermaid'
 import { api } from '../api'
@@ -26,27 +26,30 @@ export default function QuestionCard({ question, onAnswered, onError }: Props) {
 
   // mermaid 占位 div → 优先 beautiful-mermaid 同步渲染，其余走标准 mermaid
   useEffect(() => {
-    if (!questionHtml.hasMermaid) return
+    if (!questionHtml.hasMermaid && !questionHtml.hasRemoteDiagram) return
     const el = headRef.current
     if (!el) return
     const dark = document.documentElement.dataset.theme === 'dark'
-    ensureMermaid(dark)
-    const nodes = [...el.querySelectorAll('.mermaid')] as HTMLElement[]
-    const rest: HTMLElement[] = []
-    for (const n of nodes) {
-      const code = n.textContent ?? ''
-      if (isBeautifulSupported(code)) {
-        const svg = renderBeautiful(code, dark)
-        if (svg) {
-          n.innerHTML = svg
-          continue
+    if (questionHtml.hasMermaid) {
+      ensureMermaid(dark)
+      const nodes = [...el.querySelectorAll('.mermaid')] as HTMLElement[]
+      const rest: HTMLElement[] = []
+      for (const n of nodes) {
+        const code = n.textContent ?? ''
+        if (isBeautifulSupported(code)) {
+          const svg = renderBeautiful(code, dark)
+          if (svg) {
+            n.innerHTML = svg
+            continue
+          }
         }
+        rest.push(n)
       }
-      rest.push(n)
+      if (rest.length) {
+        import('mermaid').then((m) => m.default.run({ nodes: rest }).catch(() => undefined))
+      }
     }
-    if (rest.length) {
-      import('mermaid').then((m) => m.default.run({ nodes: rest }).catch(() => undefined))
-    }
+    if (questionHtml.hasRemoteDiagram) renderRemoteDiagramsIn(el)
   }, [questionHtml])
 
   async function submit(value: AnswerValue, label: string) {

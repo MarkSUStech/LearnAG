@@ -20,6 +20,7 @@ import {
   renameSessionApi,
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
+import { renderDiagram } from './render.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
@@ -324,6 +325,24 @@ app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) 
 
 app.get('/api/agent/status', (req, res) => {
   res.json({ running: isRunning() })
+})
+
+// 图表渲染服务：D2 / gnuplot → SVG（WASM，服务端渲染，前端免装）
+app.post('/api/render', async (req, res) => {
+  const { lang, code } = req.body ?? {}
+  console.log('[render] 收到请求:', lang, '| code 长度:', (code || '').length)
+  if (typeof lang !== 'string' || typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: '需要 lang 与 code' })
+  }
+  try {
+    const t0 = Date.now()
+    const svg = await renderDiagram(lang.toLowerCase(), code)
+    console.log('[render] 完成:', lang, Date.now() - t0, 'ms')
+    res.json({ svg })
+  } catch (e) {
+    console.error('[render] 失败:', lang, String(e.message || e).slice(0, 120))
+    res.status(400).json({ error: String(e.message || e).slice(0, 500) })
+  }
 })
 
 // ── 笔记答疑助手（独立于主 agent，会话绑定笔记） ────────────────────────────

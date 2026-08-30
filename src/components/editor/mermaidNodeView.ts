@@ -38,42 +38,89 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
     const lang = String(node.attrs.language ?? '').toLowerCase()
     let current = node
 
-    if (lang !== 'mermaid' && lang !== 'latex') {
-      // 普通代码块：语言标签 + 复制按钮
+    // gnuplot / d2：服务端渲染（/api/render），UI 与 mermaid 图表一致
+    if (lang === 'gnuplot' || lang === 'd2') {
       const dom = document.createElement('div')
-      dom.className = 'la-codeblock'
+      dom.className = 'mermaid-block'
+      dom.dataset.lang = lang
+
       const bar = document.createElement('div')
-      bar.className = 'cb-bar'
+      bar.className = 'mermaid-bar'
       const langTag = document.createElement('span')
-      langTag.className = 'cb-lang'
-      langTag.textContent = lang || '代码'
+      langTag.className = 'lang'
+      langTag.innerHTML =
+        lang === 'gnuplot'
+          ? '<span class="material-symbols-rounded">monitoring</span>gnuplot'
+          : '<span class="material-symbols-rounded">account_tree</span>d2'
       const copyBtn = document.createElement('button')
-      copyBtn.className = 'cb-copy'
       copyBtn.type = 'button'
-      copyBtn.innerHTML = '<span class="material-symbols-rounded">content_copy</span>'
-      copyBtn.title = '复制代码'
-      bar.append(langTag, copyBtn)
-      const pre = document.createElement('pre')
-      const code = document.createElement('code')
-      if (lang) code.dataset.language = lang
-      pre.appendChild(code)
-      dom.append(bar, pre)
+      copyBtn.textContent = '复制代码'
       copyBtn.addEventListener('click', () => {
         navigator.clipboard.writeText(current.textContent).then(() => {
-          copyBtn.innerHTML = '<span class="material-symbols-rounded">check</span>'
+          copyBtn.textContent = '已复制'
           setTimeout(() => {
-            copyBtn.innerHTML = '<span class="material-symbols-rounded">content_copy</span>'
+            copyBtn.textContent = '复制代码'
           }, 1200)
         })
       })
+      bar.append(langTag, copyBtn)
+
+      const diagram = document.createElement('div')
+      diagram.className = 'mermaid-diagram'
+
+      const contentDOM = document.createElement('pre')
+      contentDOM.className = 'mermaid-src'
+
+      dom.append(bar, diagram, contentDOM)
+
+      let renderToken = 0
+      let lastRendered: string | null = null
+
+      async function renderRemote() {
+        const my = ++renderToken
+        const code = current.textContent
+        lastRendered = code
+        diagram.classList.add('loading')
+        try {
+          const res = await fetch('/api/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lang, code }),
+          })
+          const json = await res.json()
+          if (my !== renderToken) return
+          if (!res.ok || !json.svg) throw new Error(json.error || '渲染失败')
+          diagram.classList.remove('error')
+          diagram.innerHTML = json.svg
+        } catch (e) {
+          if (my !== renderToken) return
+          diagram.classList.add('error')
+          const msg = e instanceof Error ? e.message : String(e)
+          diagram.textContent = lang + ' 渲染失败：\n' + msg.slice(0, 300)
+        } finally {
+          if (my === renderToken) diagram.classList.remove('loading')
+        }
+      }
+
+      void renderRemote() // 初始渲染
+
       return {
         dom,
-        contentDOM: code,
+        contentDOM,
         update(updated: PMNode) {
           if (updated.type.name !== 'code_block') return false
           if (String(updated.attrs.language ?? '').toLowerCase() !== lang) return false
+          const changed = updated.textContent !== current.textContent
           current = updated
+          if (changed) void renderRemote()
           return true
+        },
+        ignoreMutation(m: { target: Node }) {
+          // 图表 DOM 程序化更新忽略，避免 PM 把 SVG 插入当作文档变更触发死循环
+          return !contentDOM.contains(m.target)
+        },
+        stopEvent() {
+          return false
         },
       }
     }

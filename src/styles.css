@@ -991,7 +991,8 @@ html[data-theme='dark'] .milkdown {
   width: fit-content;
 }
 .mermaid-diagram svg {
-  max-width: none;
+  max-width: 100%;
+  height: auto;
 }
 /* KaTeX 独立公式过长时横向滚动 */
 .milkdown-editor-host .milkdown .katex-display {
