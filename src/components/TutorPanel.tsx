@@ -179,28 +179,18 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
             </div>
           ) : (
             <div key={i} className="tutor-msg assistant">
-              <div className="tutor-avatar">
-                <span className="material-symbols-rounded">{TUTOR_ROLES[role].icon}</span>
-              </div>
-              <div className="bubble">
-                <RichText text={m.content} />
-                {running && i === messages.length - 1 && <span className="stream-caret" />}
-              </div>
+              <RichText text={m.content} />
+              {running && i === messages.length - 1 && <span className="stream-caret" />}
             </div>
           ),
         )}
         {running && messages[messages.length - 1]?.role !== 'assistant' && (
           <div className="tutor-msg assistant">
-            <div className="tutor-avatar">
-              <span className="material-symbols-rounded">{TUTOR_ROLES[role].icon}</span>
-            </div>
-            <div className="bubble typing">
-              <span className="dots">
-                <i />
-                <i />
-                <i />
-              </span>
-            </div>
+            <span className="dots">
+              <i />
+              <i />
+              <i />
+            </span>
           </div>
         )}
       </div>

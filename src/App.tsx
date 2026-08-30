@@ -596,7 +596,7 @@ export default function App() {
         onOpenSwitcher={() => setSwitcherOpen(true)}
         agentRunning={agent.running}
       />
-      <div className="main">
+      <div className="main" style={{ ['--tutor-w' as string]: `${tutorWidth}px` }}>
         <div className="tabbar">
           <button
             className="icon-btn"

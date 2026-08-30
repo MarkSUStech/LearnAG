@@ -1102,7 +1102,7 @@ html[data-theme='dark'] .milkdown {
 }
 /* 答疑面板打开时，输入区避开面板 */
 .main:has(.tutor-panel) .dock {
-  right: 416px;
+  right: calc(var(--tutor-w, 400px) + 16px);
 }
 .status-line {
   display: flex;
@@ -1765,8 +1765,9 @@ html[data-theme='dark'] .milkdown {
   min-width: 0;
 }
 /* 答疑面板打开时压缩编辑器宽度而非覆盖 */
+/* 答疑面板打开时，编辑区与输入区让位（宽度跟随面板实际宽度） */
 .editor-stack.tutor-open > .editor-pane {
-  margin-right: 400px;
+  margin-right: var(--tutor-w, 400px);
 }
 
 /* ── 笔记答疑助手面板 ─────────────────────────────────────────────────── */
@@ -1866,10 +1867,9 @@ html[data-theme='dark'] .milkdown {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  scrollbar-width: thin;
 }
 .tutor-list::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
 }
 /* 空状态 */
 .tutor-empty {
@@ -1911,11 +1911,11 @@ html[data-theme='dark'] .milkdown {
   color: var(--accent);
   flex: none;
 }
-/* 消息入场 */
+/* 消息：文档式排版（无气泡无头像），用户消息右对齐主题色 */
 @keyframes msgIn {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.985);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -1923,67 +1923,31 @@ html[data-theme='dark'] .milkdown {
   }
 }
 .tutor-msg {
-  max-width: 92%;
-  padding: 8px 12px;
-  border-radius: 12px;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
   animation: msgIn 0.18s ease-out;
 }
 .tutor-msg.user {
   align-self: flex-end;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 78%, #000));
-  color: #fff;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 25%, transparent);
+  max-width: 85%;
+  color: var(--accent);
+  font-weight: 500;
+  text-align: right;
+  padding: 2px 0;
 }
 .tutor-msg.assistant {
-  align-self: flex-start;
-  display: flex;
-  gap: 8px;
-  background: none;
-  border: none;
-  padding: 0;
-  max-width: 100%;
-  width: 100%;
+  align-self: stretch;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
-.tutor-avatar {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent-weak);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 2px;
-}
-.tutor-avatar .material-symbols-rounded {
-  font-size: 15px;
-}
-.tutor-msg.assistant .bubble {
-  flex: 1;
-  min-width: 0; /* 允许收缩换行而非压成细条 */
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-  padding: 8px 12px;
+.tutor-msg.assistant:last-of-type {
+  border-bottom: none;
 }
 .tutor-msg.assistant.typing {
-  background: none;
-  border: none;
-  padding: 0;
-}
-.tutor-msg.assistant .bubble.typing {
-  padding: 10px 14px;
-}
-.tutor-msg.assistant.typing {
-  color: var(--text-3);
-  font-size: 12px;
+  border-bottom: none;
+  padding: 4px 0;
 }
 /* 打字点阵 */
 .dots {
