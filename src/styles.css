@@ -678,6 +678,8 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+  /* 底部留白：悬空输入区的高度，保证笔记末尾（含已学习按钮）能滚出遮挡区 */
+  padding-bottom: 150px;
 }
 .editor-body > * {
   max-width: 100%;
@@ -1047,14 +1049,25 @@ html[data-theme='dark'] .milkdown {
   }
 }
 
-/* ── 底部输入区（文档流内，不遮挡笔记内容） ───────────────────────────── */
+/* ── 底部输入区（悬空浮动） ───────────────────────────────────────────── */
 .dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: none;
-  padding: 6px 24px 14px;
-  background: var(--bg);
+  pointer-events: none;
+  padding: 0 24px 16px;
+  z-index: 20;
+}
+.dock > * {
+  pointer-events: auto;
+}
+/* 答疑面板打开时，输入区避开面板 */
+.main:has(.tutor-panel) .dock {
+  right: 416px;
 }
 .status-line {
   display: flex;
