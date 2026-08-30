@@ -678,8 +678,9 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  /* 底部留白：悬空输入区的高度，保证笔记末尾（含已学习按钮）能滚出遮挡区 */
-  padding-bottom: 150px;
+  flex-shrink: 0; /* 防止 flex 压缩盒高导致底部留白失效 */
+  /* 底部留白：悬空输入区全高（状态行+计划芯片+输入框）+安全余量，保证笔记末尾（含已学习按钮）完整可见 */
+  padding-bottom: 190px;
 }
 .editor-body > * {
   max-width: 100%;
