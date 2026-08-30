@@ -60,7 +60,7 @@ export interface RenderedMd {
   hasMermaid: boolean
 }
 
-/** markdown → 消毒后的 HTML；mermaid 代码块转为占位 div，由调用方 mermaid.run() 渲染；wikilink 加样式 */
+/** markdown → 消毒后的 HTML；mermaid 占位 div、wikilink/callout 样式化，由调用方渲染 mermaid */
 export function renderRichMarkdown(text: string): RenderedMd {
   const raw = marked.parse(text, { async: false }) as string
   const html = DOMPurify.sanitize(raw, { ADD_ATTR: ['style'] })
@@ -68,7 +68,11 @@ export function renderRichMarkdown(text: string): RenderedMd {
     /\[\[([^\[\]\n]{1,80})\]\]/g,
     (_m, title) => `<span class="wikilink">[[${title}]]</span>`,
   )
-  return { html: withLinks, hasMermaid: withLinks.includes('class="mermaid"') }
+  // Obsidian callout：blockquote 首段 [!type] → 彩色卡片 div
+  const withCallouts = withLinks
+    .replace(/<blockquote>\s*<p>\[!(\w+)\]\s*/g, '<div class="callout callout-$1"><p class="callout-title">')
+    .replace(/<\/blockquote>/g, '</div>')
+  return { html: withCallouts, hasMermaid: withCallouts.includes('class="mermaid"') }
 }
 
 /** 纯文本一行预览：剥掉 markdown 标记 */

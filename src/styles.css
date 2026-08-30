@@ -761,6 +761,101 @@ textarea {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
+
+/* ── Obsidian 风格 Callout（> [!type] 标题）────────────────────────────── */
+/* 类型 → 颜色 + 图标（Material Symbols 连字） */
+.milkdown-editor-host .milkdown blockquote.callout {
+  --callout-color: #3b82f6;
+  --callout-icon: 'edit_note';
+  caret-color: #58a6ff;
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 7%, var(--panel));
+  border-radius: 0 10px 10px 0;
+  padding: 10px 16px 10px 14px;
+  margin: 16px 0;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:first-of-type {
+  margin-top: 0;
+  font-weight: 600;
+  color: var(--callout-color);
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:first-of-type::before {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  content: var(--callout-icon);
+  margin-right: 6px;
+  font-size: 1.15em;
+  vertical-align: -0.18em;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:last-of-type {
+  margin-bottom: 0;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:not(:first-of-type) {
+  color: var(--text);
+  font-weight: normal;
+}
+/* [!type] 标记：完全隐藏但保持光标可渲染（font-size:0 而非 display:none） */
+.milkdown-editor-host .milkdown .callout-marker {
+  font-size: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  letter-spacing: normal;
+}
+.milkdown-editor-host .milkdown blockquote.callout {
+  caret-color: #58a6ff;
+}
+/* 各类型配色 */
+.milkdown-editor-host .milkdown blockquote.callout-abstract {
+  --callout-color: #3b82f6;
+  --callout-icon: 'summarize';
+}
+.milkdown-editor-host .milkdown blockquote.callout-info {
+  --callout-color: #0ea5e9;
+  --callout-icon: 'info';
+}
+.milkdown-editor-host .milkdown blockquote.callout-note {
+  --callout-color: #3b82f6;
+  --callout-icon: 'edit_note';
+}
+.milkdown-editor-host .milkdown blockquote.callout-tip,
+.milkdown-editor-host .milkdown blockquote.callout-success,
+.milkdown-editor-host .milkdown blockquote.callout-check {
+  --callout-color: #10b981;
+  --callout-icon: 'lightbulb';
+}
+.milkdown-editor-host .milkdown blockquote.callout-important {
+  --callout-color: #8b5cf6;
+  --callout-icon: 'local_fire_department';
+}
+.milkdown-editor-host .milkdown blockquote.callout-warning,
+.milkdown-editor-host .milkdown blockquote.callout-caution {
+  --callout-color: #f59e0b;
+  --callout-icon: 'warning';
+}
+.milkdown-editor-host .milkdown blockquote.callout-danger,
+.milkdown-editor-host .milkdown blockquote.callout-error {
+  --callout-color: #ef4444;
+  --callout-icon: 'dangerous';
+}
+.milkdown-editor-host .milkdown blockquote.callout-example {
+  --callout-color: #a855f7;
+  --callout-icon: 'science';
+}
+.milkdown-editor-host .milkdown blockquote.callout-quote,
+.milkdown-editor-host .milkdown blockquote.callout-cite {
+  --callout-color: #9ca3af;
+  --callout-icon: 'format_quote';
+}
+/* 提问卡片内的 callout */
+.q-text.md .callout {
+  border-left: 3px solid var(--callout-color, #3b82f6);
+  background: color-mix(in srgb, var(--callout-color, #3b82f6) 7%, transparent);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 12px;
+  margin: 6px 0;
+}
 /* 表格：清晰边框 + 表头底色 + 斑马纹（覆盖 Crepe 默认的近透明边框；同时覆盖 GFM 管道表与编辑器新建表） */
 .milkdown-editor-host .milkdown .tableWrapper {
   overflow-x: auto;

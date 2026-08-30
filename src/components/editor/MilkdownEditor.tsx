@@ -8,24 +8,45 @@ import { codeBlockNodeView } from './mermaidNodeView'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 
-// [[wikilink]] 高亮装饰：不改文档内容，只加样式（保存时仍是 [[标题]] 原文）
-const wikilinkPlugin = $prose(
+// [[wikilink]] 高亮装饰 + Obsidian callout（> [!type]）块级装饰
+// 均不改动文档内容，只加样式；保存时仍是原文
+const contentDecorations = $prose(
   () =>
     new Plugin({
-      key: new PluginKey('wikilink-decorations'),
+      key: new PluginKey('learnagent-decorations'),
       props: {
         decorations(state) {
           const decos: Decoration[] = []
           state.doc.descendants((node, pos) => {
-            if (!node.isText || !node.text) return
-            const re = /\[\[([^\[\]\n]{1,80})\]\]/g
-            let m: RegExpExecArray | null
-            while ((m = re.exec(node.text))) {
-              decos.push(
-                Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
-                  class: 'wikilink',
-                }),
-              )
+            if (node.isText && node.text) {
+              const re = /\[\[([^\[\]\n]{1,80})\]\]/g
+              let m: RegExpExecArray | null
+              while ((m = re.exec(node.text))) {
+                decos.push(
+                  Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
+                    class: 'wikilink',
+                  }),
+                )
+              }
+            }
+            // callout：引用块首行以 [!type] 开头 → 块级样式 + 隐藏标记
+            if (node.type.name === 'blockquote') {
+              const m = /^\s*\[!(\w+)\]/.exec(node.textContent)
+              if (m) {
+                const type = m[1].toLowerCase()
+                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: `callout callout-${type}` }))
+                node.descendants((child, childPos) => {
+                  if (!child.isText || !child.text) return
+                  const mm = /^\s*\[!\w+\]\s*/.exec(child.text)
+                  if (mm) {
+                    decos.push(
+                      Decoration.inline(pos + 1 + childPos + mm.index, pos + 1 + childPos + mm.index + mm[0].length, {
+                        class: 'callout-marker',
+                      }),
+                    )
+                  }
+                })
+              }
             }
           })
           return DecorationSet.create(state.doc, decos)
@@ -87,7 +108,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
         },
       }))
     })
-    crepe.editor.use(wikilinkPlugin)
+    crepe.editor.use(contentDecorations)
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
