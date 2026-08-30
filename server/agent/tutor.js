@@ -156,8 +156,17 @@ export async function runTutor({ emit, notePath, role, message }) {
       break
     }
 
-    // 持久化对话（不含 system）
-    saveTutorSession(notePath, messages.filter((m) => m.role !== 'system'))
+    // 持久化对话：只存 user/assistant 的有效文本（tool 结果与工具调用轮次不进会话，
+    // 否则刷新后 read_note 的整篇笔记内容会被面板当成助手消息渲染）
+    const chat = messages
+      .filter(
+        (m) =>
+          (m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string' &&
+          m.content.trim().length > 0,
+      )
+      .map((m) => ({ role: m.role, content: m.content }))
+    saveTutorSession(notePath, chat)
     emit({ type: 'tutor-done', path: notePath })
   } finally {
     tutorRun = null

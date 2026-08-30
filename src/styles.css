@@ -952,8 +952,7 @@ html[data-theme='dark'] .milkdown {
   border-color: var(--accent);
 }
 .mermaid-diagram {
-  display: flex;
-  justify-content: center;
+  display: block;
   padding: 14px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -961,9 +960,19 @@ html[data-theme='dark'] .milkdown {
   overflow-x: auto;
   cursor: pointer;
 }
+/* 子内容居中用 margin auto：溢出只发生在右侧，可滚动查看（flex 居中会让两侧都溢出无法滚动） */
+.mermaid-diagram > * {
+  margin: 0 auto;
+  width: fit-content;
+}
 .mermaid-diagram svg {
-  max-width: 100%;
-  height: auto;
+  max-width: none;
+}
+/* KaTeX 独立公式过长时横向滚动 */
+.milkdown-editor-host .milkdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 .mermaid-diagram.error {
   color: var(--danger);
@@ -1888,6 +1897,13 @@ html[data-theme='dark'] .milkdown {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border-radius: 4px;
   padding: 0 4px;
+}
+/* 聊天/卡片中 KaTeX 独立公式过长时横向滚动 */
+.rich-md .katex-display,
+.q-text.md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 .tutor-input {
   display: flex;

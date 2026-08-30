@@ -26,11 +26,17 @@ export default function TutorPanel({ notePath, noteTitle, onClose }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  // 打开时载入该笔记的历史会话
+  // 打开时载入该笔记的历史会话（兜底过滤：只保留对话消息）
   useEffect(() => {
     api
       .tutorHistory(notePath)
-      .then((r) => setMessages(r.messages as Message[]))
+      .then((r) =>
+        setMessages(
+          (r.messages as Message[]).filter(
+            (m) => (m.role === 'user' || m.role === 'assistant') && m.content?.trim(),
+          ),
+        ),
+      )
       .catch(() => setMessages([]))
   }, [notePath])
 
