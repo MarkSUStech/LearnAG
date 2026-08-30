@@ -151,9 +151,22 @@ export default function TutorPanel({ notePath, noteTitle, onClose }: Props) {
       <div className="tutor-list" ref={listRef}>
         {messages.length === 0 && (
           <div className="tutor-empty">
-            选择一个角色开始提问。
-            <br />
-            苏格拉底会用问题引导你想通；费曼要你讲给他听；快讲直接给答案。
+            <span className="material-symbols-rounded tutor-empty-icon">forum</span>
+            <div className="tutor-empty-title">选择一个角色开始提问</div>
+            <div className="tutor-empty-rows">
+              <div>
+                <span className="material-symbols-rounded">psychology_alt</span>
+                苏格拉底会用问题引导你想通
+              </div>
+              <div>
+                <span className="material-symbols-rounded">record_voice_over</span>
+                费曼要你讲给他听，挑出漏洞
+              </div>
+              <div>
+                <span className="material-symbols-rounded">bolt</span>
+                快讲直接给答案与类比
+              </div>
+            </div>
           </div>
         )}
         {messages.map((m, i) =>
@@ -163,11 +176,30 @@ export default function TutorPanel({ notePath, noteTitle, onClose }: Props) {
             </div>
           ) : (
             <div key={i} className="tutor-msg assistant">
-              <RichText text={m.content} />
+              <div className="tutor-avatar">
+                <span className="material-symbols-rounded">{TUTOR_ROLES[role].icon}</span>
+              </div>
+              <div className="bubble">
+                <RichText text={m.content} />
+                {running && i === messages.length - 1 && <span className="stream-caret" />}
+              </div>
             </div>
           ),
         )}
-        {running && <div className="tutor-msg assistant typing">{status || '…'}</div>}
+        {running && messages[messages.length - 1]?.role !== 'assistant' && (
+          <div className="tutor-msg assistant">
+            <div className="tutor-avatar">
+              <span className="material-symbols-rounded">{TUTOR_ROLES[role].icon}</span>
+            </div>
+            <div className="bubble typing">
+              <span className="dots">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="tutor-input">
