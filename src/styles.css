@@ -1922,6 +1922,7 @@ html[data-theme='dark'] .milkdown {
   border: none;
   padding: 0;
   max-width: 100%;
+  width: 100%;
 }
 .tutor-avatar {
   flex: none;
@@ -1940,6 +1941,8 @@ html[data-theme='dark'] .milkdown {
   font-size: 15px;
 }
 .tutor-msg.assistant .bubble {
+  flex: 1;
+  min-width: 0; /* 允许收缩换行而非压成细条 */
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
