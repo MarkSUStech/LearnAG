@@ -202,6 +202,18 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
           diagram.classList.remove('error')
           diagram.innerHTML = svg
         } else {
+          // Crepe 把 $..$ 块转为 LaTeX 代码块；若内容明显不是数学（含 # 注释/->/引号），
+          // 按代码显示而非喂给 KaTeX 产生一屏报错
+          const looksLikeMath = !new RegExp('(^|\\n)\\s*#|->|"').test(code)
+          if (!looksLikeMath) {
+            diagram.classList.remove('error')
+            diagram.innerHTML = ''
+            const pre = document.createElement('pre')
+            pre.className = 'latex-as-code'
+            pre.textContent = code
+            diagram.appendChild(pre)
+            return
+          }
           const holder = document.createElement('div')
           katex.render(code, holder, { displayMode: true, throwOnError: false, strict: false })
           if (my !== renderToken) return

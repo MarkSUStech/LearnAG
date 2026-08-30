@@ -996,6 +996,22 @@ html[data-theme='dark'] .milkdown {
   width: auto;
   height: auto;
 }
+/* LaTeX 块内容不是数学时的代码回退显示 */
+.latex-as-code {
+  width: 100%;
+  margin: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  text-align: left;
+  color: var(--text);
+}
+.tutor-msg.assistant .rich-md .latex-as-code,
+.q-text.md .latex-as-code {
+  white-space: pre-wrap;
+}
+
 /* KaTeX 独立公式过长时横向滚动 */
 .milkdown-editor-host .milkdown .katex-display {
   overflow-x: auto;
