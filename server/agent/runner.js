@@ -191,8 +191,7 @@ function apiConfig() {
   return { base: apiBaseURL.replace(/\/+$/, ''), apiKey, model }
 }
 
-async function* streamChat({ messages, signal }) {
-  const { base, apiKey, model } = apiConfig()
+export async function* streamChat({ messages, signal }) {  const { base, apiKey, model } = apiConfig()
   const res = await fetch(base + '/chat/completions', {
     method: 'POST',
     signal,

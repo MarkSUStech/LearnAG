@@ -12,6 +12,7 @@ import QuestionCard from './components/QuestionCard'
 import QuickSwitcher from './components/QuickSwitcher'
 import ReferenceBrowser from './components/ReferenceBrowser'
 import Toasts from './components/Toasts'
+import TutorPanel from './components/TutorPanel'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
 import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode } from './types'
 
@@ -50,6 +51,7 @@ export default function App() {
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null)
   const [learnedFlow, setLearnedFlow] = useState<string | null>(null) // 正在检查掌握情况的笔记路径
   const [celebratePath, setCelebratePath] = useState<string | null>(null)
+  const [tutorFor, setTutorFor] = useState<string | null>(null) // 答疑面板绑定的笔记路径
   const learnedFlowRef = useRef<string | null>(null)
   learnedFlowRef.current = learnedFlow
 
@@ -261,6 +263,11 @@ export default function App() {
 
   const activeTab = tabs[activeIdx]
   const activeNotePath = activeTab?.kind === 'note' ? activeTab.path : null
+
+  // 切换标签/笔记时关闭答疑面板（面板严格绑定其笔记）
+  useEffect(() => {
+    setTutorFor((cur) => (cur && activeNotePath !== cur ? null : cur))
+  }, [activeNotePath])
 
   // ── 新建 / 删除 / 改名 ──────────────────────────────────────────────────
   async function createEntry(_parent: string | null, kind: 'file' | 'folder') {
@@ -482,6 +489,12 @@ export default function App() {
       case 'agent-question-closed':
         setPendingQuestion((q) => (q && q.id === e.id ? null : q))
         break
+      case 'tutor-delta':
+      case 'tutor-status':
+      case 'tutor-done':
+        // 桥接给答疑面板（TutorPanel 自行按 path 过滤）
+        window.dispatchEvent(new MessageEvent('tutor-sse', { data: JSON.stringify(e) }))
+        break
       case 'agent-status': {
         const stage = e.stage as string
         if (stage === 'thinking') setAgent({ running: true, stage: 'thinking', message: (e.message as string) || '正在思考…' })
@@ -611,25 +624,38 @@ export default function App() {
                 <button onClick={() => setConflicts((cf) => ({ ...cf, [activeNotePath]: false }))}>忽略</button>
               </div>
             )}
-            {contents[activeNotePath] !== undefined ? (
-              <EditorPane
-                key={activeNotePath}
-                path={activeNotePath}
-                content={contents[activeNotePath]}
-                streaming={Boolean(streaming[activeNotePath])}
-                dark={dark}
-                onEdit={handleEdit}
-                onWikilink={openWikilink}
-                onMarkLearned={(p, title) => void markLearned(p, title)}
-                learnedRunning={Boolean(learnedFlow)}
-                celebrate={celebratePath === activeNotePath}
-              />
-            ) : (
-              <div className="empty-state">
-                <span className="material-symbols-rounded">progress_activity</span>
-                加载中…
-              </div>
-            )}
+            <div className={`editor-stack ${tutorFor === activeNotePath ? 'tutor-open' : ''}`}>
+              {contents[activeNotePath] !== undefined ? (
+                <EditorPane
+                  key={activeNotePath}
+                  path={activeNotePath}
+                  content={contents[activeNotePath]}
+                  streaming={Boolean(streaming[activeNotePath])}
+                  dark={dark}
+                  onEdit={handleEdit}
+                  onWikilink={openWikilink}
+                  onMarkLearned={(p, title) => void markLearned(p, title)}
+                  learnedRunning={Boolean(learnedFlow)}
+                  celebrate={celebratePath === activeNotePath}
+                  tutorOpen={tutorFor === activeNotePath}
+                  onToggleTutor={() =>
+                    setTutorFor((cur) => (cur === activeNotePath ? null : activeNotePath))
+                  }
+                />
+              ) : (
+                <div className="empty-state">
+                  <span className="material-symbols-rounded">progress_activity</span>
+                  加载中…
+                </div>
+              )}
+              {tutorFor === activeNotePath && (
+                <TutorPanel
+                  notePath={activeNotePath}
+                  noteTitle={activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}
+                  onClose={() => setTutorFor(null)}
+                />
+              )}
+            </div>
           </>
         ) : activeTab?.kind === 'graph' ? (
           <GraphView graph={graph} onOpenNote={(p) => void openNote(p)} />

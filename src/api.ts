@@ -79,6 +79,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     }),
+  tutorSend: (notePath: string, role: string, message: string) =>
+    http<{ started: boolean }>('/api/tutor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notePath, role, message }),
+    }),
+  tutorStop: () => http<{ ok: boolean }>('/api/tutor/stop', { method: 'POST' }),
+  tutorHistory: (path: string) =>
+    http<{ messages: { role: 'user' | 'assistant'; content: string }[] }>(
+      `/api/tutor/session?path=${encodeURIComponent(path)}`,
+    ),
+  tutorClear: (path: string) =>
+    http<{ ok: boolean }>(`/api/tutor/session?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
 }
 
 interface SessionMetaApi {

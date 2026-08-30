@@ -19,9 +19,25 @@ interface Props {
   learnedRunning: boolean
   /** 庆祝动效（掌握检查完成） */
   celebrate: boolean
+  /** 答疑面板开启状态 */
+  tutorOpen: boolean
+  /** 切换答疑面板 */
+  onToggleTutor: () => void
 }
 
-export default function EditorPane({ path, content, streaming, dark, onEdit, onWikilink, onMarkLearned, learnedRunning, celebrate }: Props) {
+export default function EditorPane({
+  path,
+  content,
+  streaming,
+  dark,
+  onEdit,
+  onWikilink,
+  onMarkLearned,
+  learnedRunning,
+  celebrate,
+  tutorOpen,
+  onToggleTutor,
+}: Props) {
   const split = useMemo(() => splitFrontmatter(content), [content])
   const streamingRef = useRef(streaming)
   streamingRef.current = streaming
@@ -52,6 +68,13 @@ export default function EditorPane({ path, content, streaming, dark, onEdit, onW
             ● agent 正在写入…
           </span>
         )}
+        <button
+          className={`icon-btn tutor-toggle ${tutorOpen ? 'active' : ''}`}
+          title="笔记答疑助手"
+          onClick={onToggleTutor}
+        >
+          <span className="material-symbols-rounded">forum</span>
+        </button>
       </div>
       <div className="editor-body" key={path}>
         <div className="editor-content-col">

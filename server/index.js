@@ -19,6 +19,7 @@ import {
   deleteSessionApi,
   renameSessionApi,
 } from './agent/runner.js'
+import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
@@ -323,6 +324,50 @@ app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) 
 
 app.get('/api/agent/status', (req, res) => {
   res.json({ running: isRunning() })
+})
+
+// ── 笔记答疑助手（独立于主 agent，会话绑定笔记） ────────────────────────────
+
+app.post('/api/tutor', async (req, res) => {
+  const { notePath, role, message } = req.body ?? {}
+  if (typeof notePath !== 'string' || !notePath.endsWith('.md')) {
+    return res.status(400).json({ error: '需要 notePath（.md）' })
+  }
+  if (typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: '消息不能为空' })
+  }
+  if (isTutorRunning()) return res.status(409).json({ error: '答疑助手正在回复中' })
+  try {
+    res.json({ started: true })
+    await runTutor({ emit, notePath, role: typeof role === 'string' ? role : 'quick', message: message.trim() })
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      emit({ type: 'tutor-done', path: notePath, stopped: true })
+    } else {
+      emit({ type: 'tutor-done', path: notePath, error: String(e.message || e) })
+    }
+  }
+})
+
+app.post('/api/tutor/stop', (req, res) => {
+  stopTutor()
+  res.json({ ok: true })
+})
+
+app.get('/api/tutor/session', (req, res) => {
+  try {
+    res.json({ messages: loadTutorSession(String(req.query.path || '')) })
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.delete('/api/tutor/session', (req, res) => {
+  try {
+    res.json(clearTutorSession(String(req.query.path || '')))
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
 })
 
 // 原始文件输出（资料预览器：PDF/图片/文本等）
