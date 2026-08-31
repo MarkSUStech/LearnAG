@@ -71,7 +71,7 @@ function Inner({ dark, tutorOpen, onToggleTutor }: { dark: boolean; tutorOpen?: 
         )}
         <div className="ps-center">
           <PdfViewer />
-          <CardPanel />
+          {s.rightOpen && <CardPanel />}
           {!s.outlineOpen && (
             <button className="ps-outline-fab icon-btn" title="展开大纲" onClick={() => s.setOutlineOpen(true)}>
               <span className="material-symbols-rounded">toc</span>
