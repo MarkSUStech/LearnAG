@@ -64,6 +64,10 @@ interface Props {
   onWikilink?: (title: string) => void
   /** 只读模式（资料预览等） */
   readonly?: boolean
+  /** 所属笔记路径：提供后 mermaid 渲染失败会自动触发 AI 修复 */
+  notePath?: string
+  /** 返回 true 时暂停 mermaid 自动修复（如 agent 正在流式写入） */
+  autoFixBlocked?: () => boolean
 }
 
 /**
@@ -72,7 +76,7 @@ interface Props {
  * - 用户编辑 → onChange 回调（去抖由父层处理）
  * - 点击 [[wikilink]] → onWikilink
  */
-export default function MilkdownEditor({ value, dark, onChange, onWikilink, readonly }: Props) {
+export default function MilkdownEditor({ value, dark, onChange, onWikilink, readonly, notePath, autoFixBlocked }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const crepeRef = useRef<Crepe | null>(null)
   const viewRef = useRef<any>(null)
@@ -80,6 +84,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
   onChangeRef.current = onChange
   const onWikilinkRef = useRef(onWikilink)
   onWikilinkRef.current = onWikilink
+  const autoFixBlockedRef = useRef(autoFixBlocked)
+  autoFixBlockedRef.current = autoFixBlocked
   const lastPushed = useRef(value) // 最近一次由本组件上报的内容
   const applyingExternal = useRef(false)
 
@@ -104,6 +110,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
           ...prev.nodeViews,
           code_block: codeBlockNodeView({
             isDark: () => document.documentElement.dataset.theme === 'dark',
+            notePath: notePath,
+            autoFixBlocked: () => autoFixBlockedRef.current?.() ?? false,
           }),
         },
       }))

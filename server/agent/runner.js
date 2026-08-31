@@ -271,15 +271,21 @@ export async function* streamChat({ messages, signal }) {
   }
 }
 
-/** 非流式单次调用（用于历史压缩等辅助任务） */
-async function chatOnce(messages) {
+/** 非流式单次调用（历史压缩、mermaid 修复等辅助任务） */
+export async function chatOnce(messages, opts = {}) {
   const { base, apiKey, model } = apiConfig()
   return withRetry(
     async () => {
       const res = await fetch(base + '/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-        body: JSON.stringify({ model, messages, stream: false, temperature: 0.3, max_tokens: 800 }),
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          temperature: opts.temperature ?? 0.3,
+          max_tokens: opts.maxTokens ?? 800,
+        }),
       })
       if (!res.ok) {
         const err = new Error('AI 服务返回 ' + res.status)
@@ -331,7 +337,20 @@ async function compactIfNeeded(messages, summary, emit) {
 
 // ── 运行器 ──────────────────────────────────────────────────────────────────
 
-let currentRun = null // { controller: AbortController }
+let currentRun = null // { controller: AbortController, writeActivity: Map<path, ts> }
+
+/** 某笔记是否正被 agent 写入（含结束后 2.5s 冷却，供 mermaid 自动修复等旁路任务避让） */
+export function isPathStreaming(path) {
+  const rec = currentRun?.writeActivity
+  if (!rec) return false
+  const key = String(path).replace(/\\/g, '/')
+  let last = rec.get(key)
+  if (last == null) {
+    // writeActivity 可能以反斜杠路径记录，兜底再查一次
+    for (const [k, v] of rec) if (k.replace(/\\/g, '/') === key) last = v
+  }
+  return last != null && Date.now() - last < 2500
+}
 
 export function stopAgent() {
   cancelPendingQuestion()
@@ -384,7 +403,7 @@ function formatAnswer(answer) {
 export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
   if (currentRun) throw new Error('已有任务在进行中')
   const abort = new AbortController()
-  currentRun = { controller: abort }
+  currentRun = { controller: abort, writeActivity: new Map() }
   const settings = loadSettings()
   if (!settings.apiKey) {
     currentRun = null
@@ -475,6 +494,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
                   if (content !== lastContent || partial.path !== lastEmittedPath) {
                     lastContent = content
                     lastEmittedPath = partial.path
+                    currentRun.writeActivity.set(partial.path, Date.now())
                     emit({
                       type: 'agent-write',
                       path: partial.path,
@@ -598,6 +618,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
 
           const result = await executeTool(tc.name, args, {
             onWrite: (rel, content) => {
+              currentRun?.writeActivity?.set(rel, Date.now())
               wroteAny = true
               emit({ type: 'agent-write', path: rel, content, done: true })
               emit({ type: 'agent-status', stage: 'written', path: rel, message: '已写入 ' + rel })

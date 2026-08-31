@@ -27,6 +27,10 @@ export function ensureMermaid(dark: boolean) {
 
 export interface CodeBlockNodeViewOptions {
   isDark: () => boolean
+  /** 所属笔记路径：提供后，mermaid 渲染失败会自动上报 AI 修复 */
+  notePath?: string
+  /** 返回 true 时暂停自动修复（如 agent 正在流式写入该笔记） */
+  autoFixBlocked?: () => boolean
 }
 
 /**
@@ -84,7 +88,7 @@ function bindEmptyBlockFix(
  * - 语言 latex（Crepe 把 $$..$$ 块转换为 LaTeX 代码块）→ katex 渲染，可点击切换源码编辑
  * - 其他语言 → 普通 pre/code 块
  */
-export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
+export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBlockNodeViewOptions) {
   return (node: PMNode, view: EditorView, getPos: (() => number | undefined) | undefined) => {
     const lang = String(node.attrs.language ?? '').toLowerCase()
     let current = node
@@ -219,6 +223,22 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
     let renderToken = 0
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     let lastRendered: string | null = null
+    let fixTimer: ReturnType<typeof setTimeout> | null = null
+
+    // mermaid 渲染失败 → 防抖上报 AI 自动修复（只修这一段代码块）；期间任何新渲染都会撤销旧上报
+    function scheduleAutoFix(badCode: string, errorMessage: string) {
+      if (!notePath) return
+      if (fixTimer) clearTimeout(fixTimer)
+      fixTimer = setTimeout(() => {
+        fixTimer = null
+        if (autoFixBlocked?.()) return
+        void fetch('/api/mermaid-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: notePath, code: badCode, error: errorMessage }),
+        }).catch(() => undefined)
+      }, 1500)
+    }
 
     function scheduleRender(immediate = false) {
       const code = current.textContent
@@ -233,10 +253,23 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
       }
     }
 
+    /** beautiful-mermaid 对非法语法可能"成功"渲染出空 SVG（viewBox 0 0 0 0）——视为失败 */
+    function isBlankSvg(svg: string): boolean {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
+      if (m && parseFloat(m[1]) * parseFloat(m[2]) === 0) return true
+      const visible = svg.replace(/<defs[\s\S]*?<\/defs>/g, '')
+      return !/<(text|path|rect|circle|polygon|polyline|line|ellipse)\b/.test(visible)
+    }
+
     async function render() {
       const my = ++renderToken
       const code = current.textContent
       lastRendered = code
+      // 新渲染开始：撤销尚未发出的修复上报（内容仍在变化中）
+      if (fixTimer) {
+        clearTimeout(fixTimer)
+        fixTimer = null
+      }
       diagram.classList.add('loading')
       try {
         if (isMermaid) {
@@ -244,17 +277,22 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
           if (isBeautifulSupported(code)) {
             const svg = renderBeautiful(code, isDark())
             if (my !== renderToken) return
-            if (svg) {
+            if (svg && !isBlankSvg(svg)) {
               diagram.classList.remove('error')
               diagram.innerHTML = svg
               return
             }
+            // 空图 → 视为失败，落到标准 mermaid 重试
           }
           // 兜底：标准 mermaid 异步渲染（mindmap/gantt/pie/带 classDef 的图）
           ensureMermaid(isDark())
           const id = 'mmd-' + Math.random().toString(36).slice(2, 10)
           const { svg } = await mermaid.render(id, code)
           if (my !== renderToken) return
+          if (isBlankSvg(svg)) {
+            // 标准 mermaid 也可能不抛错但产出空图
+            throw new Error('渲染结果为空图，mermaid 语法可能存在问题')
+          }
           diagram.classList.remove('error')
           diagram.innerHTML = svg
         } else {
@@ -282,6 +320,8 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
         diagram.classList.add('error')
         const msg = typeof e === 'string' ? e : ((e as Error)?.message ?? String(e))
         diagram.textContent = (isMermaid ? 'Mermaid' : 'LaTeX') + ' 渲染失败（可点击"编辑源码"修正）：\n' + msg.slice(0, 300)
+        // mermaid 语法错误 → 上报 AI 只修这一段
+        if (isMermaid && code.trim()) scheduleAutoFix(code, msg.slice(0, 600))
       } finally {
         if (my === renderToken) diagram.classList.remove('loading')
       }

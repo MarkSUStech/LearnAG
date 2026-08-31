@@ -83,6 +83,8 @@ export default function EditorPane({
             dark={dark}
             onChange={(body) => !streamingRef.current && onEdit(path, body)}
             onWikilink={onWikilink}
+            notePath={path}
+            autoFixBlocked={() => Boolean(streaming)}
           />
           {/* 仅知识笔记（note/ 分区）显示；计划/知识地图类笔记不显示 */}
           {path.includes('/note/') && (

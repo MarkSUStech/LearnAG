@@ -22,6 +22,7 @@ import {
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
 import { renderDiagram } from './render.js'
 import { streamChat } from './agent/runner.js'
+import { reportMermaidFailure } from './agent/mermaidfix.js'
 import * as pdfstudy from './pdfstudy.js'
 import { keyFor, getOutlineTree } from './pdfdoc.js'
 import * as rag from './rag.js'
@@ -594,6 +595,17 @@ app.post('/api/rag/reindex', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }
+})
+
+// ── mermaid 渲染失败自动修复（前端上报，只修坏掉的那段代码块） ──────────────
+
+app.post('/api/mermaid-fix', (req, res) => {
+  const { path: p, code, error } = req.body ?? {}
+  if (typeof p !== 'string' || typeof code !== 'string') {
+    return res.status(400).json({ error: '需要 path 与 code' })
+  }
+  res.json({ queued: true })
+  void reportMermaidFailure({ path: p, code, error: String(error ?? '') })
 })
 
 // ── 翻译（选区翻译，SSE 流式） ──────────────────────────────────────────────
