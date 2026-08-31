@@ -1,29 +1,54 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import FilePicker from './FilePicker'
 import type { AgentStatus } from '../types'
 
-export type Mode = '教学' | '探索' | '目标'
+export type Mode = '教学' | '探索' | '目标' | '写作'
 
 interface Props {
   agent: AgentStatus
   mode: Mode
   onModeChange: (m: Mode) => void
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: string[]) => void
   onStop: () => void
   topSlot?: ReactNode
   planChip?: ReactNode
   answering: boolean
+  files: string[]
 }
+
+/** agent 面板（专家图标 / \ 唤起）：分组展示全部全局 agent */
+const AGENT_GROUPS: { label: string; items: { id: Mode; name: string; desc: string; icon: string }[] }[] = [
+  {
+    label: '学习模式',
+    items: [
+      { id: '教学', name: '教学', desc: '摸底测评 → 定制计划 → 逐步讲解', icon: 'school' },
+      { id: '探索', name: '探索', desc: '基于知识图谱向外推一层，推荐新知识', icon: 'explore' },
+      { id: '目标', name: '目标', desc: '推演最短 / 深度 / 广度三条学习路径', icon: 'flag' },
+    ],
+  },
+  {
+    label: '笔记',
+    items: [
+      { id: '写作', name: '写笔记', desc: '根据指定的笔记 / PDF（含你的标注与卡片）撰写笔记', icon: 'edit_note' },
+    ],
+  },
+]
 
 const PLACEHOLDER: Record<Mode, string> = {
   教学: '想学什么？例如：教我动态规划…（Enter 发送）',
   探索: '输入"推荐我学点什么"，agent 会从知识图谱边缘向外推一层…',
   目标: '说出你的目标，例如：我想做出自己的网站…',
+  写作: '描述笔记要求，例如：根据这篇论文和我的标注写一篇笔记…',
 }
 
-export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering }: Props) {
+export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files }: Props) {
   const [text, setText] = useState('')
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [attachments, setAttachments] = useState<string[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const hadQuestion = useRef(false)
 
   useEffect(() => {
@@ -40,6 +65,18 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
     hadQuestion.current = hasQuestion
   }, [hasQuestion])
 
+  // 点击面板/输入栏以外的区域关闭 agent 面板
+  useEffect(() => {
+    if (!menuOpen) return
+    function onDown(e: MouseEvent) {
+      const t = e.target as HTMLElement
+      if (t.closest('.agent-menu') || t.closest('.input-bar')) return
+      setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
+
   function setDock(next: boolean) {
     setCollapsed(next)
     if (next) localStorage.setItem('la-dock-collapsed', '1')
@@ -50,8 +87,9 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
     const t = text.trim()
     if (!t) return
     if (agent.running && !answering) return // 回答 AI 提问时允许提交
-    onSend(t)
+    onSend(t, attachments)
     setText('')
+    setAttachments([])
   }
 
   return (
@@ -79,19 +117,38 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
           {agent.message && <span>{agent.message}</span>}
         </div>
         <div className="input-bar">
-          <div className="mode-switch">
-            {(['教学', '探索', '目标'] as Mode[]).map((m) => (
-              <button
-                key={m}
-                className={`mode-btn ${mode === m ? 'active' : ''}`}
-                onClick={() => onModeChange(m)}
-                title={modeTitle(m)}
-              >
-                <span className="material-symbols-rounded">{modeIcon(m)}</span>
-                {m}
+          <div className="ib-left">
+            <button
+              className={`ib-expert${menuOpen ? ' active' : ''}`}
+              title={modeTitle(mode)}
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              <span className="material-symbols-rounded">{modeIcon(mode)}</span>
+            </button>
+            {mode === '写作' && (
+              <button className="ib-add" title="附带笔记 / PDF 资料" onClick={() => setPickerOpen(true)}>
+                <span className="material-symbols-rounded">add</span>
               </button>
-            ))}
+            )}
           </div>
+          {attachments.length > 0 && (
+            <div className="ib-attachments">
+              {attachments.map((p) => (
+                <span key={p} className="ib-chip" title={p}>
+                  <span className="material-symbols-rounded">
+                    {p.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
+                  </span>
+                  {p.split('/').pop()}
+                  <button
+                    title="移除"
+                    onClick={() => setAttachments((a) => a.filter((x) => x !== p))}
+                  >
+                    <span className="material-symbols-rounded">close</span>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             ref={taRef}
             rows={1}
@@ -99,7 +156,18 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
             placeholder={answering ? '回答 AI 的提问…（Enter 直接提交答案）' : PLACEHOLDER[mode]}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.nativeEvent.isComposing) return
+              if (e.key === '\\') {
+                // \ 唤起 agent 面板
+                e.preventDefault()
+                setMenuOpen(true)
+                return
+              }
+              if (e.key === 'Escape' && menuOpen) {
+                setMenuOpen(false)
+                return
+              }
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 submit()
               }
@@ -114,7 +182,46 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
               <span className="material-symbols-rounded">send</span>
             </button>
           )}
+          {menuOpen && (
+            <div className="agent-menu" ref={menuRef}>
+              {AGENT_GROUPS.map((g) => (
+                <div key={g.label} className="ag-group">
+                  <div className="ag-label">
+                    {g.label}（{g.items.length}）
+                  </div>
+                  {g.items.map((it) => (
+                    <button
+                      key={it.id}
+                      className={`ag-item${mode === it.id ? ' active' : ''}`}
+                      onClick={() => {
+                        onModeChange(it.id)
+                        setMenuOpen(false)
+                        taRef.current?.focus()
+                      }}
+                    >
+                      <span className="material-symbols-rounded ag-icon">{it.icon}</span>
+                      <span className="ag-name">{it.name}</span>
+                      <span className="ag-desc">{it.desc}</span>
+                      {mode === it.id && <span className="material-symbols-rounded ag-check">check</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+        {pickerOpen && (
+          <FilePicker
+            files={files}
+            initial={attachments}
+            onConfirm={(paths) => {
+              setAttachments(paths)
+              setPickerOpen(false)
+              taRef.current?.focus()
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
       </div>
     </div>
   )
@@ -128,16 +235,20 @@ function modeIcon(m: Mode) {
       return 'explore'
     case '目标':
       return 'flag'
+    case '写作':
+      return 'edit_note'
   }
 }
 
 function modeTitle(m: Mode) {
   switch (m) {
     case '教学':
-      return '教学模式：摸底测评 → 定制计划 → 逐步讲解'
+      return '教学：摸底测评 → 定制计划 → 逐步讲解（\\ 可切换 agent）'
     case '探索':
-      return '探索模式：基于知识图谱向外推一层，推荐新知识'
+      return '探索：基于知识图谱向外推一层，推荐新知识（\\ 可切换 agent）'
     case '目标':
-      return '目标模式：推演最短 / 深度 / 广度三条学习路径'
+      return '目标：推演最短 / 深度 / 广度三条学习路径（\\ 可切换 agent）'
+    case '写作':
+      return '写笔记：根据指定的笔记 / PDF（含你的标注与卡片）撰写笔记（+ 附带资料）'
   }
 }

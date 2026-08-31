@@ -45,11 +45,11 @@ export const api = {
       body: JSON.stringify({ from, to }),
     }),
   getGraph: () => http<GraphData>('/api/graph'),
-  sendAgent: (message: string, mode: string) =>
+  sendAgent: (message: string, mode: string, attachments?: string[]) =>
     http<{ started: boolean }>('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, mode }),
+      body: JSON.stringify({ message, mode, attachments }),
     }),
   stopAgent: () => http<{ ok: boolean }>('/api/agent/stop', { method: 'POST' }),
   answerQuestion: (id: string, value: AnswerValue) =>

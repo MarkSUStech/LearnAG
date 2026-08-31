@@ -374,7 +374,7 @@ export default function App() {
   }
 
   // ── Agent ───────────────────────────────────────────────────────────────
-  async function sendToAgent(text: string) {
+  async function sendToAgent(text: string, attachments: string[] = []) {
     // 有待回答的提问 → 本次输入直接作为答案提交
     if (pendingQuestion) {
       try {
@@ -388,7 +388,7 @@ export default function App() {
     flushSaves()
     setAgent({ running: true, stage: 'thinking', message: '正在思考…' })
     try {
-      await api.sendAgent(text, mode)
+      await api.sendAgent(text, mode, attachments)
     } catch (e) {
       setAgent({ running: false, stage: 'idle', message: '' })
       toast((e as Error).message, true)
@@ -751,9 +751,10 @@ export default function App() {
           agent={agent}
           mode={mode}
           onModeChange={setMode}
-          onSend={sendToAgent}
+          onSend={(t, attachments) => void sendToAgent(t, attachments)}
           onStop={stopAgent}
           answering={Boolean(pendingQuestion)}
+          files={flattenFiles(tree)}
           planChip={
             planInfo?.exists && planInfo.goal ? (
               <button

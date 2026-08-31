@@ -251,7 +251,7 @@ app.get('/api/graph', (req, res) => {
 // ── Agent ───────────────────────────────────────────────────────────────────
 
 app.post('/api/agent', async (req, res) => {
-  const { message, mode } = req.body
+  const { message, mode, attachments } = req.body ?? {}
   if (typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: '消息不能为空' })
   }
@@ -261,6 +261,9 @@ app.post('/api/agent', async (req, res) => {
     emit,
     userMessage: message.trim(),
     mode: typeof mode === 'string' ? mode : '教学',
+    attachments: Array.isArray(attachments)
+      ? attachments.filter((a) => typeof a === 'string' && a.trim()).map((a) => a.replace(/\\/g, '/')).slice(0, 20)
+      : [],
   }).catch((e) => {
     if (e.name === 'AbortError') {
       emit({ type: 'agent-done', stopped: true })

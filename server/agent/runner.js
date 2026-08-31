@@ -10,7 +10,7 @@ import * as sessions from './sessions.js'
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
 const COMPACTION_KEEP = 24 // 压缩时保留最近的消息数
-const MODES = ['教学', '探索', '目标']
+const MODES = ['教学', '探索', '目标', '写作']
 
 // ── 提问挂起（ask_user） ────────────────────────────────────────────────────
 
@@ -339,9 +339,10 @@ function formatAnswer(answer) {
  * 运行一轮 agent 对话。
  * @param emit (event: object) => void  SSE 推送回调
  * @param userMessage 用户输入
- * @param mode '教学' | '探索' | '目标'
+ * @param mode '教学' | '探索' | '目标' | '写作'
+ * @param attachments 写作模式附带的资料路径（vault 相对路径，md/pdf）
  */
-export async function runAgent({ emit, userMessage, mode }) {
+export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
   if (currentRun) throw new Error('已有任务在进行中')
   const abort = new AbortController()
   currentRun = { controller: abort }
@@ -354,9 +355,13 @@ export async function runAgent({ emit, userMessage, mode }) {
   const sessionId = sessions.ensureActive()
   const { messages: history, summary } = sessions.loadSession(sessionId)
 
+  const attachBlock =
+    Array.isArray(attachments) && attachments.length
+      ? '\n【附带资料】\n' + attachments.map((p) => '- ' + p).join('\n') + '\n'
+      : ''
   const userEntry = {
     role: 'user',
-    content: `【模式：${MODES.includes(mode) ? mode : '教学'}】${userMessage}`,
+    content: `【模式：${MODES.includes(mode) ? mode : '教学'}】${userMessage}${attachBlock}`,
   }
   const messages = [
     {
