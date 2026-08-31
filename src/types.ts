@@ -34,6 +34,13 @@ export interface GraphData {
 
 export type Tab = { kind: 'note'; path: string } | { kind: 'pdf'; path: string } | { kind: 'graph' } | { kind: 'refs' }
 
+/** 写作 agent 的附带资料：可标重点/次要，并可限定章节/页码范围 */
+export interface WriterAttachment {
+  path: string
+  primary?: boolean
+  scope?: { chapter?: string; from?: number; to?: number }
+}
+
 export interface PlanInfo {
   exists: boolean
   goal: string

@@ -15,7 +15,7 @@ import Toasts from './components/Toasts'
 import TutorPanel from './components/TutorPanel'
 import PdfStudyPane from './components/pdfstudy/PdfStudyPane'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
-import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode } from './types'
+import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode, WriterAttachment } from './types'
 
 /** 展开文件树为路径列表 */
 function flattenFiles(nodes: TreeNode[], out: string[] = []): string[] {
@@ -374,7 +374,7 @@ export default function App() {
   }
 
   // ── Agent ───────────────────────────────────────────────────────────────
-  async function sendToAgent(text: string, attachments: string[] = []) {
+  async function sendToAgent(text: string, attachments: WriterAttachment[] = [], modeOverride?: string) {
     // 有待回答的提问 → 本次输入直接作为答案提交
     if (pendingQuestion) {
       try {
@@ -388,7 +388,7 @@ export default function App() {
     flushSaves()
     setAgent({ running: true, stage: 'thinking', message: '正在思考…' })
     try {
-      await api.sendAgent(text, mode, attachments)
+      await api.sendAgent(text, modeOverride ?? mode, attachments)
     } catch (e) {
       setAgent({ running: false, stage: 'idle', message: '' })
       toast((e as Error).message, true)
@@ -725,7 +725,12 @@ export default function App() {
           </>
         ) : activePdfPath ? (
           <div className={`editor-stack ${tutorFor === activePdfPath ? 'tutor-open' : ''}`}>
-            <PdfStudyPane path={activePdfPath} dark={dark} />
+            <PdfStudyPane
+              path={activePdfPath}
+              dark={dark}
+              files={flattenFiles(tree)}
+              onComposeNotes={(message, attachments) => void sendToAgent(message, attachments, '写作')}
+            />
             {tutorFor === activePdfPath && (
               <TutorPanel
                 notePath={activePdfPath}

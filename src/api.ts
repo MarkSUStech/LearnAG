@@ -1,4 +1,4 @@
-import type { AnswerValue, GraphData, RagStatus, Settings, TreeNode } from './types'
+import type { AnswerValue, GraphData, RagStatus, Settings, TreeNode, WriterAttachment } from './types'
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -45,7 +45,7 @@ export const api = {
       body: JSON.stringify({ from, to }),
     }),
   getGraph: () => http<GraphData>('/api/graph'),
-  sendAgent: (message: string, mode: string, attachments?: string[]) =>
+  sendAgent: (message: string, mode: string, attachments?: WriterAttachment[]) =>
     http<{ started: boolean }>('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

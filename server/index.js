@@ -257,12 +257,30 @@ app.post('/api/agent', async (req, res) => {
   }
   if (isRunning()) return res.status(409).json({ error: 'agent 正在工作中，请稍候' })
   res.json({ started: true })
+  // 附带资料归一化：string 或 {path, primary, scope:{chapter,from,to}}
+  const normScope = (sc) => {
+    if (!sc || typeof sc !== 'object') return undefined
+    const out = {}
+    if (typeof sc.chapter === 'string' && sc.chapter.trim()) out.chapter = sc.chapter.trim()
+    for (const k of ['from', 'to']) {
+      const n = parseInt(sc[k], 10)
+      if (Number.isFinite(n) && n > 0) out[k] = n
+    }
+    return Object.keys(out).length ? out : undefined
+  }
+  const normAtt = (a) => {
+    if (typeof a === 'string' && a.trim()) return { path: a.trim().replace(/\\/g, '/'), primary: true }
+    if (a && typeof a === 'object' && typeof a.path === 'string' && a.path.trim()) {
+      return { path: a.path.trim().replace(/\\/g, '/'), primary: Boolean(a.primary), scope: normScope(a.scope) }
+    }
+    return null
+  }
   runAgent({
     emit,
     userMessage: message.trim(),
     mode: typeof mode === 'string' ? mode : '教学',
     attachments: Array.isArray(attachments)
-      ? attachments.filter((a) => typeof a === 'string' && a.trim()).map((a) => a.replace(/\\/g, '/')).slice(0, 20)
+      ? attachments.map(normAtt).filter(Boolean).slice(0, 20)
       : [],
   }).catch((e) => {
     if (e.name === 'AbortError') {

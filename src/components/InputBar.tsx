@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import FilePicker from './FilePicker'
-import type { AgentStatus } from '../types'
+import type { AgentStatus, WriterAttachment } from '../types'
 
 export type Mode = '教学' | '探索' | '目标' | '写作'
 
@@ -8,7 +8,7 @@ interface Props {
   agent: AgentStatus
   mode: Mode
   onModeChange: (m: Mode) => void
-  onSend: (text: string, attachments: string[]) => void
+  onSend: (text: string, attachments: WriterAttachment[]) => void
   onStop: () => void
   topSlot?: ReactNode
   planChip?: ReactNode
@@ -46,7 +46,7 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
   const [menuOpen, setMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [attachments, setAttachments] = useState<string[]>([])
+  const [attachments, setAttachments] = useState<WriterAttachment[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const hadQuestion = useRef(false)
@@ -133,15 +133,15 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
           </div>
           {attachments.length > 0 && (
             <div className="ib-attachments">
-              {attachments.map((p) => (
-                <span key={p} className="ib-chip" title={p}>
+              {attachments.map((a) => (
+                <span key={a.path} className="ib-chip" title={a.path}>
                   <span className="material-symbols-rounded">
-                    {p.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
+                    {a.path.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
                   </span>
-                  {p.split('/').pop()}
+                  {a.path.split('/').pop()}
                   <button
                     title="移除"
-                    onClick={() => setAttachments((a) => a.filter((x) => x !== p))}
+                    onClick={() => setAttachments((list) => list.filter((x) => x.path !== a.path))}
                   >
                     <span className="material-symbols-rounded">close</span>
                   </button>
@@ -213,9 +213,14 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
         {pickerOpen && (
           <FilePicker
             files={files}
-            initial={attachments}
+            initial={attachments.map((a) => a.path)}
             onConfirm={(paths) => {
-              setAttachments(paths)
+              // 输入栏直接附带的资料默认全部作为重点参考（范围由 agent 自行定位）
+              setAttachments((prev) => {
+                const next = [...prev]
+                for (const p of paths) if (!next.some((x) => x.path === p)) next.push({ path: p, primary: true })
+                return next
+              })
               setPickerOpen(false)
               taRef.current?.focus()
             }}

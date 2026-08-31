@@ -357,7 +357,21 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
 
   const attachBlock =
     Array.isArray(attachments) && attachments.length
-      ? '\n【附带资料】\n' + attachments.map((p) => '- ' + p).join('\n') + '\n'
+      ? '\n【附带资料】（[重点]=笔记核心依据；[次要]=补充对照）\n' +
+        attachments
+          .map((a) => {
+            const role = a.primary === false ? '[次要]' : '[重点]'
+            const sc = a.scope || {}
+            const parts = []
+            if (sc.chapter) parts.push(`章节「${sc.chapter}」`)
+            if (sc.from || sc.to) parts.push(`第 ${sc.from ?? '?'}–${sc.to ?? '?'} 页`)
+            const scopeText = parts.length
+              ? '建议范围：' + parts.join('，')
+              : '建议范围：未指定（先用 search_knowledge 定位相关章节/页码，禁止全文读入）'
+            return `- ${role} ${a.path} ｜ ${scopeText}`
+          })
+          .join('\n') +
+        '\n'
       : ''
   const userEntry = {
     role: 'user',

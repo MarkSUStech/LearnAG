@@ -4019,3 +4019,193 @@ html[data-theme='dark'] .ps-ann.mask {
   font-size: 12.5px;
   color: var(--text-2);
 }
+
+/* ── 整理笔记对话框（PDF 学习器右栏） ─────────────────────────────────── */
+.note-organizer {
+  max-width: 92vw;
+  max-height: 82vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: popIn 0.16s ease;
+}
+.no-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.no-head .material-symbols-rounded {
+  font-size: 19px;
+  color: var(--accent);
+}
+.no-head .icon-btn {
+  margin-left: auto;
+}
+.no-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.no-req {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.no-req label {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.no-req textarea {
+  resize: vertical;
+  min-height: 54px;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 9px 11px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.no-req textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.no-refs-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.no-refs-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.no-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.no-ref {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.no-ref.primary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel-2));
+}
+.no-star {
+  display: inline-flex;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.no-star.on {
+  color: var(--learning);
+}
+.no-star .material-symbols-rounded {
+  font-size: 18px;
+}
+.no-file-icon {
+  font-size: 16px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.no-file-name {
+  font-size: 12.5px;
+  color: var(--text);
+  font-weight: 500;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.no-chapter {
+  flex: 1;
+  min-width: 0;
+  max-width: 240px;
+  font-size: 12px;
+  padding: 4px 6px;
+  color: var(--text);
+}
+.no-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.no-pages input {
+  width: 42px;
+  text-align: center;
+  padding: 3px 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+.no-del {
+  flex-shrink: 0;
+}
+.no-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px;
+  border: 1.5px dashed var(--border);
+  border-radius: 9px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  transition: all 0.12s;
+}
+.no-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.no-add .material-symbols-rounded {
+  font-size: 16px;
+}
+.no-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.no-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.no-foot .btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.no-foot .btn.primary .material-symbols-rounded {
+  font-size: 16px;
+}
+.no-foot .btn.primary:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}

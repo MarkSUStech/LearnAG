@@ -1,14 +1,22 @@
-// 右侧卡片面板：镜像映射画布（与 PDF 同步滚动）+ 卡片自由拖动 + 标注/标签视图
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+// 右侧卡片面板：镜像映射画布（与 PDF 同步滚动）+ 卡片自由拖动 + 标注/标签视图 + 整理笔记
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { contentHeight, docYToPx, useStore } from './store'
 import { attachScrollSync } from './syncBus'
 import { anchorYInPage } from './PdfViewer'
 import CardItem from './CardItem'
 import TagView from './TagView'
 import AnnListView from './AnnListView'
+import NoteOrganizer from './NoteOrganizer'
+import type { WriterAttachment } from '../../types'
 
-export default function CardPanel() {
+interface Props {
+  files: string[]
+  onComposeNotes: (message: string, attachments: WriterAttachment[]) => void
+}
+
+export default function CardPanel({ files, onComposeNotes }: Props) {
   const s = useStore()
+  const [organizerOpen, setOrganizerOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const scrollSyncRef = useRef(attachScrollSync('panel'))
   const setPanelEl = useCallback((el: HTMLDivElement | null) => {
@@ -61,6 +69,13 @@ export default function CardPanel() {
             </button>
             <button
               className="ps-mini-btn"
+              title="根据标注、卡片与参考资料生成笔记"
+              onClick={() => setOrganizerOpen(true)}
+            >
+              <span className="material-symbols-rounded">auto_stories</span> 整理笔记
+            </button>
+            <button
+              className="ps-mini-btn"
               title="全部卡片回到锚点位置"
               onClick={() => s.cards.forEach((c) => c.offsetY !== 0 && s.updateCard(c.id, { offsetY: 0 }))}
             >
@@ -90,6 +105,9 @@ export default function CardPanel() {
       )}
       {s.rightTab === 'anns' && <AnnListView />}
       {s.rightTab === 'tags' && <TagView />}
+      {organizerOpen && (
+        <NoteOrganizer files={files} onLaunch={onComposeNotes} onClose={() => setOrganizerOpen(false)} />
+      )}
     </aside>
   )
 }

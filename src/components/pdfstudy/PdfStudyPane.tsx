@@ -14,22 +14,38 @@ export default function PdfStudyPane({
   dark,
   tutorOpen,
   onToggleTutor,
+  files,
+  onComposeNotes,
 }: {
   path: string
   dark: boolean
   tutorOpen?: boolean
   onToggleTutor?: () => void
+  files?: string[]
+  onComposeNotes?: (message: string, attachments: import('../../types').WriterAttachment[]) => void
 }) {
   return (
     <StudyProvider docPath={path}>
       <div className="pdf-study" data-theme={dark ? 'dark' : 'light'}>
-        <Inner dark={dark} tutorOpen={tutorOpen} onToggleTutor={onToggleTutor} />
+        <Inner dark={dark} tutorOpen={tutorOpen} onToggleTutor={onToggleTutor} files={files} onComposeNotes={onComposeNotes} />
       </div>
     </StudyProvider>
   )
 }
 
-function Inner({ dark, tutorOpen, onToggleTutor }: { dark: boolean; tutorOpen?: boolean; onToggleTutor?: () => void }) {
+function Inner({
+  dark,
+  tutorOpen,
+  onToggleTutor,
+  files,
+  onComposeNotes,
+}: {
+  dark: boolean
+  tutorOpen?: boolean
+  onToggleTutor?: () => void
+  files?: string[]
+  onComposeNotes?: (message: string, attachments: import('../../types').WriterAttachment[]) => void
+}) {
   const s = useStore()
 
   // 快捷键：Esc 回选择工具；+/- 缩放
@@ -71,7 +87,7 @@ function Inner({ dark, tutorOpen, onToggleTutor }: { dark: boolean; tutorOpen?: 
         )}
         <div className="ps-center">
           <PdfViewer />
-          {s.rightOpen && <CardPanel />}
+          {s.rightOpen && <CardPanel files={files ?? []} onComposeNotes={onComposeNotes ?? (() => undefined)} />}
           {!s.outlineOpen && (
             <button className="ps-outline-fab icon-btn" title="展开大纲" onClick={() => s.setOutlineOpen(true)}>
               <span className="material-symbols-rounded">toc</span>
