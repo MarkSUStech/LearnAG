@@ -4,7 +4,11 @@ import * as vault from '../vault.js'
 import { readGraph, updateGraph, GRAPH_FILE } from '../graph.js'
 import { webSearch, webFetch } from './web.js'
 import { searchPapers, downloadPaperPdf } from './scholar.js'
-import { extractPdfText } from './pdf.js'
+import { extractPdfText, extractPdfPages } from './pdf.js'
+import { search as ragSearch } from '../rag.js'
+import { loadDoc } from '../pdfstudy.js'
+import { buildStudyContext } from '../pdfcontext.js'
+import { keyFor, getOutlineTree, flattenOutline, chapterRange } from '../pdfdoc.js'
 
 // ── 工具定义（OpenAI function calling 格式） ────────────────────────────────
 
@@ -134,14 +138,35 @@ export const toolDefs = [
     function: {
       name: 'read_note',
       description:
-        '读取一篇笔记的完整内容（含 YAML frontmatter）。支持 .md 文本笔记与 .pdf 文件（PDF 自动提取文本层，可传 page 按页读取；扫描型 PDF 无文本层会如实提示）。修改文件前必须先读取。',
+        '读取一篇笔记的完整内容（含 YAML frontmatter）。支持 .md 文本笔记与 .pdf 文件：' +
+        'PDF 可传 page 按页读取，或传 chapter 按章节标题读取（自动解析书签定位页码范围，返回带行号的原文 + 用户在该范围的标注与卡片）；' +
+        '读取 PDF 时会自动附带【用户标注摘要】（用户的高亮/笔记，可能是外文翻译）。扫描型 PDF 无文本层会如实提示。修改文件前必须先读取。',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'vault 内的相对路径，如 知识图谱/递归.md 或 资料/TLS/某论文.pdf' },
           page: { type: 'number', description: '仅 PDF：读取指定页（1 开始）。不传则读全文（过长会截断）' },
+          chapter: { type: 'string', description: '仅 PDF：章节标题（或关键词），从书签大纲解析页码范围后整章读取；优先于 page' },
         },
         required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description:
+        '语义检索整个知识库（本地 RAG，中英双语 embedding）。覆盖全部笔记、PDF 教材/论文文本、以及用户在 PDF 学习器里的标注与卡片笔记。' +
+        '适用：用户提问的知识点在笔记里找不到细节时、需要引用教材/论文原文时、想了解用户在某资料上做过哪些笔记时。' +
+        '返回最相关的片段（来源路径/页码/相关度/文本）。回答后建议用 read_note（可带 chapter 参数）读取完整上下文。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检索查询（中英文皆可，描述要找的内容）' },
+          max_results: { type: 'number', description: '返回条数，默认 6，最多 12' },
+        },
+        required: ['query'],
       },
     },
   },
@@ -228,16 +253,53 @@ export async function executeTool(name, args, hooks = {}) {
       case 'read_note': {
         const rel = String(args.path || '')
         if (/\.pdf$/i.test(rel)) {
+          // 章节模式：书签解析页码范围 → StudyContext（行号原文 + 用户标注/卡片）
+          if (args.chapter && String(args.chapter).trim()) {
+            const { totalPages } = await extractPdfPages(rel)
+            const abs = vault.resolveInVault(rel)
+            const tree = await getOutlineTree(keyFor(rel), abs)
+            if (!tree.length) {
+              return JSON.stringify({ error: '该 PDF 没有书签大纲，无法按章节读取；请改用 page 参数按页读取', totalPages })
+            }
+            const range = chapterRange(flattenOutline(tree), String(args.chapter), totalPages)
+            if (!range) {
+              const chapters = flattenOutline(tree)
+                .filter((n) => n.level <= 1 && n.title)
+                .slice(0, 40)
+                .map((n) => n.title)
+              return JSON.stringify({ error: `没有找到匹配「${args.chapter}」的章节。可用章节：`, chapters, totalPages })
+            }
+            const doc = loadDoc(rel)
+            const ctx = await buildStudyContext(
+              { relPath: rel, annotations: doc.annotations, cards: doc.cards },
+              { strategy: 'pages', from: range.from, to: range.to, maxChars: 50000 },
+            )
+            return JSON.stringify({
+              path: rel,
+              chapter: range.title,
+              pageRange: [range.from, range.to],
+              totalPages,
+              truncated: ctx.truncated,
+              content: ctx.text,
+            })
+          }
           const r = await extractPdfText(rel, args.page)
+          // 自动附带用户在该 PDF 上的标注/卡片摘要（含翻译卡片）
+          const doc = loadDoc(rel)
+          const note = annotationsSummary(doc)
           return JSON.stringify({
             path: rel,
             totalPages: r.totalPages,
             truncated: r.truncated,
-            content: r.content,
+            content: r.content + (note ? '\n\n' + note : ''),
           })
         }
         const content = vault.readFile(rel)
         return content
+      }
+      case 'search_knowledge': {
+        const r = await ragSearch(String(args.query ?? ''), Math.min(12, Number(args.max_results) || 6))
+        return JSON.stringify(r)
       }
       case 'rename_note': {
         vault.renameEntry(args.from, args.to)
@@ -332,6 +394,26 @@ function fsStatKind(rel) {
     return 'change'
   }
 }
+
+/** 用户在 PDF 学习器里的标注/卡片摘要（附在 read_note 的 PDF 结果后） */
+function annotationsSummary(doc) {
+  const rows = []
+  for (const a of doc.annotations) {
+    if (rows.length >= 30) break
+    if (a.type === 'image') continue
+    if (a.type === 'mask') rows.push(`- [遮挡自测框] 第${a.page}页（用户用于自查，可考虑考用户其中内容）`)
+    else if (a.text) rows.push(`- [${ANN_LABEL[a.type] ?? '标注'}] 第${a.page}页 "${a.text.slice(0, 160)}"${a.tags?.length ? ' ' + a.tags.map((t) => '#' + t).join(' ') : ''}`)
+  }
+  for (const c of doc.cards) {
+    if (rows.length >= 40) break
+    const body = String(c.markdown ?? '').replace(/\s+/g, ' ').slice(0, 200)
+    rows.push(`- [卡片·${c.purpose}] ${c.title || '(无标题)'}（第${c.anchor?.page ?? '?'}页）: ${body}`)
+  }
+  if (!rows.length) return ''
+  return '── 用户在学习器里做的标注与卡片 ──\n' + rows.join('\n')
+}
+
+const ANN_LABEL = { highlight: '荧光', underline: '下划线', squiggly: '波浪线', strikethrough: '删除线', 'tag-anchor': '标签' }
 
 /** 从笔记 frontmatter 提取字段，自动 upsert 图谱节点并按 related 补边 */
 function syncNoteToGraph(rel, content) {

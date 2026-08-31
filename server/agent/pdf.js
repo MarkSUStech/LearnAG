@@ -7,7 +7,8 @@ import { resolveInVault } from '../vault.js'
 
 const MAX_CHARS = 50000
 
-export async function extractPdfText(relPath, page) {
+/** 提取全部页文本（带 md5 缓存），供 read_note 与 RAG 分块共用 */
+export async function extractPdfPages(relPath) {
   const abs = resolveInVault(relPath)
   if (!fs.existsSync(abs)) throw new Error('文件不存在：' + relPath)
   const stat = fs.statSync(abs)
@@ -36,8 +37,13 @@ export async function extractPdfText(relPath, page) {
     pages = (res.text || []).map((t) => (t || '').trim())
     fs.writeFileSync(cacheFile, JSON.stringify(pages), 'utf8')
   }
+  return { pages, totalPages: pages.length }
+}
 
-  const totalPages = pages.length
+/** read_note 用：可按页读取，超长截断 */
+export async function extractPdfText(relPath, page) {
+  const { pages, totalPages } = await extractPdfPages(relPath)
+
   const nonEmpty = pages.filter((t) => t.length > 0).length
   if (nonEmpty === 0) {
     return { totalPages, content: '（该 PDF 没有可提取的文本层，可能是扫描/图片型 PDF，无法读取内容）', truncated: true }

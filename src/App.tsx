@@ -13,6 +13,7 @@ import QuickSwitcher from './components/QuickSwitcher'
 import ReferenceBrowser from './components/ReferenceBrowser'
 import Toasts from './components/Toasts'
 import TutorPanel from './components/TutorPanel'
+import PdfStudyPane from './components/pdfstudy/PdfStudyPane'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
 import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode } from './types'
 
@@ -157,7 +158,26 @@ export default function App() {
   }, [])
 
   // ── 文件打开 / 保存 ─────────────────────────────────────────────────────
+  function openPdf(path: string) {
+    flushSaves()
+    setTabs((ts) => {
+      const i = ts.findIndex((t) => t.kind === 'pdf' && t.path === path)
+      if (i >= 0) {
+        setActiveIdx(i)
+        return ts
+      }
+      const next = [...ts]
+      next.splice(activeIdxRef.current + 1, 0, { kind: 'pdf', path })
+      setActiveIdx(next.findIndex((t) => t.kind === 'pdf' && t.path === path))
+      return next
+    })
+  }
+
   async function openNote(path: string) {
+    if (path.toLowerCase().endsWith('.pdf')) {
+      openPdf(path)
+      return
+    }
     if (!path.toLowerCase().endsWith('.md')) {
       toast('非 Markdown 文件请在「资料」预览器中查看')
       openRefs()
@@ -296,11 +316,13 @@ export default function App() {
 
   const activeTab = tabs[activeIdx]
   const activeNotePath = activeTab?.kind === 'note' ? activeTab.path : null
+  const activePdfPath = activeTab?.kind === 'pdf' ? activeTab.path : null
+  const activeDocPath = activeNotePath ?? activePdfPath
 
-  // 切换标签/笔记时关闭答疑面板（面板严格绑定其笔记）
+  // 切换标签/文档时关闭答疑面板（面板严格绑定其笔记/文档）
   useEffect(() => {
-    setTutorFor((cur) => (cur && activeNotePath !== cur ? null : cur))
-  }, [activeNotePath])
+    setTutorFor((cur) => (cur && activeDocPath !== cur ? null : cur))
+  }, [activeDocPath])
 
   // ── 新建 / 删除 / 改名 ──────────────────────────────────────────────────
   async function createEntry(_parent: string | null, kind: 'file' | 'folder') {
@@ -606,35 +628,42 @@ export default function App() {
           >
             <span className="material-symbols-rounded">{sidebarCollapsed ? 'menu' : 'left_panel_close'}</span>
           </button>
-          {tabs.map((tab, i) => (
-            <div
-              key={tab.kind === 'note' ? tab.path : tab.kind}
-              className={`tab ${i === activeIdx ? 'active' : ''}`}
-              onClick={() => {
-                flushSaves()
-                setActiveIdx(i)
-              }}
-            >
-              <span className="material-symbols-rounded">
-                {tab.kind === 'graph' ? 'hub' : tab.kind === 'refs' ? 'folder_open' : 'description'}
-              </span>
-              <span className="tab-title">
-                {tab.kind === 'graph' ? '知识图谱' : tab.kind === 'refs' ? '资料' : tab.path.split('/').pop()?.replace(/\.md$/, '')}
-              </span>
-              {streaming[tab.kind === 'note' ? tab.path : ''] && <span className="dot" />}
-              <span
-                className="close"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  closeTab(i)
+          {tabs.map((tab, i) => {
+            const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
+            const tabTitle =
+              tab.kind === 'graph'
+                ? '知识图谱'
+                : tab.kind === 'refs'
+                  ? '资料'
+                  : tab.path.split('/').pop()?.replace(/\.(md|pdf)$/i, '') ?? ''
+            return (
+              <div
+                key={tabKey}
+                className={`tab ${i === activeIdx ? 'active' : ''}`}
+                onClick={() => {
+                  flushSaves()
+                  setActiveIdx(i)
                 }}
               >
-                <span className="material-symbols-rounded" style={{ fontSize: 14 }}>
-                  close
+                <span className="material-symbols-rounded">
+                  {tab.kind === 'graph' ? 'hub' : tab.kind === 'refs' ? 'folder_open' : tab.kind === 'pdf' ? 'picture_as_pdf' : 'description'}
                 </span>
-              </span>
-            </div>
-          ))}
+                <span className="tab-title">{tabTitle}</span>
+                {streaming[tab.kind === 'note' ? tab.path : ''] && <span className="dot" />}
+                <span
+                  className="close"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTab(i)
+                  }}
+                >
+                  <span className="material-symbols-rounded" style={{ fontSize: 14 }}>
+                    close
+                  </span>
+                </span>
+              </div>
+            )
+          })}
           <div className="tabbar-end" />
         </div>
 
@@ -694,10 +723,23 @@ export default function App() {
               )}
             </div>
           </>
+        ) : activePdfPath ? (
+          <div className={`editor-stack ${tutorFor === activePdfPath ? 'tutor-open' : ''}`}>
+            <PdfStudyPane path={activePdfPath} dark={dark} />
+            {tutorFor === activePdfPath && (
+              <TutorPanel
+                notePath={activePdfPath}
+                noteTitle={activePdfPath.split('/').pop()?.replace(/\.pdf$/i, '') ?? ''}
+                width={tutorWidth}
+                onResizeStart={(e) => startResize(e, 'tutor')}
+                onClose={() => setTutorFor(null)}
+              />
+            )}
+          </div>
         ) : activeTab?.kind === 'graph' ? (
           <GraphView graph={graph} onOpenNote={(p) => void openNote(p)} />
         ) : activeTab?.kind === 'refs' ? (
-          <ReferenceBrowser tree={tree} dark={dark} onOpenNote={(p) => void openNote(p)} />
+          <ReferenceBrowser tree={tree} dark={dark} onOpenNote={(p) => void openNote(p)} onOpenPdf={openPdf} />
         ) : (
           <div className="empty-state">
             <span className="material-symbols-rounded">note_stack</span>

@@ -12,6 +12,7 @@ const DEFAULTS = {
   apiBaseURL: 'https://api.deepseek.com',
   apiKey: '',
   model: 'deepseek-chat',
+  ragModel: 'jina-v2-base-zh',
 }
 
 let cache = null
@@ -39,7 +40,7 @@ export function saveSettings(patch) {
   ensureDataDir()
   const current = loadSettings()
   const next = { ...current }
-  for (const key of ['vaultPath', 'apiBaseURL', 'apiKey', 'model']) {
+  for (const key of ['vaultPath', 'apiBaseURL', 'apiKey', 'model', 'ragModel']) {
     if (typeof patch[key] === 'string' && patch[key].trim() !== '') {
       next[key] = patch[key].trim()
     }
@@ -57,6 +58,7 @@ export function publicSettings() {
     vaultPath: s.vaultPath,
     apiBaseURL: s.apiBaseURL,
     model: s.model,
+    ragModel: s.ragModel,
     hasApiKey: Boolean(s.apiKey),
     apiKeyMasked: s.apiKey ? s.apiKey.slice(0, 3) + '***' + s.apiKey.slice(-4) : '',
   }

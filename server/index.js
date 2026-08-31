@@ -21,6 +21,10 @@ import {
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
 import { renderDiagram } from './render.js'
+import { streamChat } from './agent/runner.js'
+import * as pdfstudy from './pdfstudy.js'
+import { keyFor, getOutlineTree } from './pdfdoc.js'
+import * as rag from './rag.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
@@ -106,11 +110,21 @@ vault.watchVault((evt) => {
   if (evt.path === '知识图谱.json' && evt.kind !== 'unlink') {
     emit({ type: 'graph-changed' })
   }
+  // RAG 索引联动：md/pdf 新增或变化入队，删除即清除
+  const p = String(evt.path || '')
+  if (/\.md$/i.test(p)) {
+    if (evt.kind === 'unlink') rag.removeFile(p)
+    else if (evt.kind === 'add' || evt.kind === 'change') rag.enqueue(p)
+  } else if (/\.pdf$/i.test(p)) {
+    if (evt.kind === 'unlink') rag.removeFile(p)
+    else if (evt.kind === 'add' || evt.kind === 'change') rag.enqueue(p)
+  }
   // 仅目录结构变化时刷新文件树
   if (['add', 'unlink', 'add-dir', 'unlink-dir'].includes(evt.kind)) {
     emit({ type: 'tree-changed' })
   }
 })
+rag.initRag()
 
 // ── 设置 ────────────────────────────────────────────────────────────────────
 
@@ -126,10 +140,15 @@ app.put('/api/settings', (req, res) => {
       delete patch.apiKey
     }
     const prevVault = loadSettings().vaultPath
+    const prevRagModel = loadSettings().ragModel
     const next = saveSettings(patch)
     if (path.resolve(next.vaultPath) !== path.resolve(prevVault)) {
       initVault()
       emit({ type: 'vault-changed', vaultPath: next.vaultPath })
+      rag.initRag()
+    }
+    if (next.ragModel && next.ragModel !== prevRagModel) {
+      void rag.onModelChange().catch((e) => console.error('[rag] 换模型重索引失败:', e.message))
     }
     res.json(publicSettings())
   } catch (e) {
@@ -188,7 +207,14 @@ app.post('/api/file', (req, res) => {
 
 app.delete('/api/file', (req, res) => {
   try {
-    res.json(vault.deleteEntry(req.query.path))
+    const p = String(req.query.path || '')
+    res.json(vault.deleteEntry(p))
+    if (/\.pdf$/i.test(p)) {
+      pdfstudy.removeDoc(p)
+      rag.removeFile(p)
+    } else if (/\.md$/i.test(p)) {
+      rag.removeFile(p)
+    }
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }
@@ -198,6 +224,15 @@ app.post('/api/rename', (req, res) => {
   try {
     const { from, to } = req.body
     res.json(vault.renameEntry(from, to))
+    // PDF 改名：迁移标注 sidecar/资产，并重建 RAG 索引键
+    if (/\.pdf$/i.test(String(from)) && /\.pdf$/i.test(String(to))) {
+      pdfstudy.migrateDoc(from, to)
+      rag.removeFile(from)
+      rag.enqueue(to)
+    } else if (/\.md$/i.test(String(from))) {
+      rag.removeFile(from)
+      rag.enqueue(to)
+    }
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }
@@ -348,9 +383,9 @@ app.post('/api/render', async (req, res) => {
 // ── 笔记答疑助手（独立于主 agent，会话绑定笔记） ────────────────────────────
 
 app.post('/api/tutor', async (req, res) => {
-  const { notePath, role, message } = req.body ?? {}
-  if (typeof notePath !== 'string' || !notePath.endsWith('.md')) {
-    return res.status(400).json({ error: '需要 notePath（.md）' })
+  const { notePath, role, message, page } = req.body ?? {}
+  if (typeof notePath !== 'string' || !(notePath.endsWith('.md') || /\.pdf$/i.test(notePath))) {
+    return res.status(400).json({ error: '需要 notePath（.md 或 .pdf）' })
   }
   if (typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: '消息不能为空' })
@@ -358,7 +393,13 @@ app.post('/api/tutor', async (req, res) => {
   if (isTutorRunning()) return res.status(409).json({ error: '答疑助手正在回复中' })
   try {
     res.json({ started: true })
-    await runTutor({ emit, notePath, role: typeof role === 'string' ? role : 'quick', message: message.trim() })
+    await runTutor({
+      emit,
+      notePath,
+      role: typeof role === 'string' ? role : 'quick',
+      message: message.trim(),
+      page: Number(page) || 0,
+    })
   } catch (e) {
     if (e.name === 'AbortError') {
       emit({ type: 'tutor-done', path: notePath, stopped: true })
@@ -448,6 +489,131 @@ app.get('/api/plan', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }
+})
+
+// ── PDF 学习器（标注/卡片/大纲/贴图资产） ───────────────────────────────────
+
+app.get('/api/pdf-study/doc', (req, res) => {
+  try {
+    const p = String(req.query.path || '')
+    vault.resolveInVault(p) // 路径校验
+    res.json(pdfstudy.loadDoc(p))
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.put('/api/pdf-study/doc', (req, res) => {
+  try {
+    const p = String(req.query.path || '')
+    vault.resolveInVault(p)
+    const { annotations, cards } = req.body ?? {}
+    if (!Array.isArray(annotations) || !Array.isArray(cards)) {
+      return res.status(400).json({ error: '需要 annotations 与 cards 数组' })
+    }
+    res.json(pdfstudy.saveDoc(p, { annotations, cards }))
+    // 标注/卡片变化 → 重索引该 PDF 的标注块（后台）
+    void rag.reindexAnnotations(p).catch(() => undefined)
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.get('/api/pdf-study/outline', async (req, res) => {
+  try {
+    const p = String(req.query.path || '')
+    const abs = vault.resolveInVault(p)
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: '文件不存在' })
+    const outline = await getOutlineTree(keyFor(p), abs)
+    res.json({ outline })
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.post('/api/pdf-study/asset', (req, res) => {
+  try {
+    const { path: p, dataB64, mime } = req.body ?? {}
+    vault.resolveInVault(String(p || ''))
+    res.json(pdfstudy.saveAsset(String(p), String(dataB64 || ''), String(mime || 'image/png')))
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.get('/api/pdf-study/asset/:key/:file', (req, res) => {
+  try {
+    const abs = pdfstudy.assetAbsolutePath(req.params.key, req.params.file)
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: '资产不存在' })
+    const ext = path.extname(abs).toLowerCase()
+    const map = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+    res.setHeader('Content-Type', map[ext] || 'application/octet-stream')
+    fs.createReadStream(abs).pipe(res)
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+// ── 本地 RAG（知识库语义检索） ──────────────────────────────────────────────
+
+app.get('/api/rag/status', (req, res) => {
+  try {
+    res.json(rag.status())
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+app.post('/api/rag/reindex', async (req, res) => {
+  try {
+    res.json({ started: true })
+    void rag.reindexAll().catch((e) => console.error('[rag] 全量重索引失败:', e.message))
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+// ── 翻译（选区翻译，SSE 流式） ──────────────────────────────────────────────
+
+app.post('/api/translate', async (req, res) => {
+  const { text, to } = req.body ?? {}
+  if (typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: '需要 text' })
+  }
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  res.flushHeaders()
+  const send = (obj) => {
+    try {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`)
+    } catch {
+      /* ignore */
+    }
+  }
+  const target = String(to) === 'en' ? '英文' : '中文'
+  try {
+    for await (const { delta } of streamChat({
+      messages: [
+        {
+          role: 'system',
+          content:
+            `你是专业的学术翻译引擎。把用户提供的文本翻译为${target}：` +
+            '术语准确、语句通顺；数学公式、代码、专有名词保留原文。只输出译文，不要任何解释或前缀。',
+        },
+        { role: 'user', content: text.slice(0, 6000) },
+      ],
+    })) {
+      if (delta?.content) send({ delta: delta.content })
+    }
+    send({ done: true })
+  } catch (e) {
+    send({ error: String(e.message || e) })
+  }
+  res.end()
 })
 
 // ── 生产模式静态托管 ────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ export interface GraphData {
   edges: GraphEdge[]
 }
 
-export type Tab = { kind: 'note'; path: string } | { kind: 'graph' } | { kind: 'refs' }
+export type Tab = { kind: 'note'; path: string } | { kind: 'pdf'; path: string } | { kind: 'graph' } | { kind: 'refs' }
 
 export interface PlanInfo {
   exists: boolean
@@ -47,8 +47,23 @@ export interface Settings {
   vaultPath: string
   apiBaseURL: string
   model: string
+  ragModel: string
   hasApiKey: boolean
   apiKeyMasked: string
+}
+
+export interface RagStatus {
+  model: string
+  modelId: string
+  modelLabel: string
+  modelSize: string
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  error: string
+  downloadProgress: number
+  chunks: number
+  files: number
+  queue: number
+  vaultFiles: number
 }
 
 export type AgentStage = 'idle' | 'thinking' | 'writing' | 'tool' | 'written' | 'done'

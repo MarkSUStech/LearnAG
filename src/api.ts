@@ -1,4 +1,4 @@
-import type { AnswerValue, GraphData, Settings, TreeNode } from './types'
+import type { AnswerValue, GraphData, RagStatus, Settings, TreeNode } from './types'
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -15,7 +15,7 @@ export interface UploadPreview {
 
 export const api = {
   getSettings: () => http<Settings>('/api/settings'),
-  saveSettings: (patch: Partial<Record<'vaultPath' | 'apiBaseURL' | 'apiKey' | 'model', string>>) =>
+  saveSettings: (patch: Partial<Record<'vaultPath' | 'apiBaseURL' | 'apiKey' | 'model' | 'ragModel', string>>) =>
     http<Settings>('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -79,11 +79,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     }),
-  tutorSend: (notePath: string, role: string, message: string) =>
+  tutorSend: (notePath: string, role: string, message: string, page?: number) =>
     http<{ started: boolean }>('/api/tutor', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notePath, role, message }),
+      body: JSON.stringify({ notePath, role, message, page }),
     }),
   tutorStop: () => http<{ ok: boolean }>('/api/tutor/stop', { method: 'POST' }),
   tutorHistory: (path: string) =>
@@ -92,7 +92,11 @@ export const api = {
     ),
   tutorClear: (path: string) =>
     http<{ ok: boolean }>(`/api/tutor/session?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  ragStatus: () => http<RagStatus>('/api/rag/status'),
+  reindexRag: () => http<{ started: boolean }>('/api/rag/reindex', { method: 'POST' }),
 }
+
+export type { RagStatus } from './types'
 
 interface SessionMetaApi {
   id: string

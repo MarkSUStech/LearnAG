@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { FONT_PRESETS, WIDTH_PRESETS, type Appearance } from '../appearance'
-import type { Settings } from '../types'
+import type { RagStatus, Settings } from '../types'
 
 interface Props {
   settings: Settings
@@ -11,14 +11,39 @@ interface Props {
   onSaved: (s: Settings) => void
 }
 
+const RAG_MODELS = [
+  { value: 'jina-v2-base-zh', label: 'Jina v2 base zh（中英双语 · 推荐 ~160MB）' },
+  { value: 'bge-m3', label: 'BGE-M3（最强多语 · 较慢 ~600MB）' },
+  { value: 'm-e5-small', label: 'Multilingual E5 small（轻量 ~120MB）' },
+]
+
 export default function SettingsDialog({ settings, appearance, onAppearanceChange, onClose, onSaved }: Props) {
   const [vaultPath, setVaultPath] = useState(settings.vaultPath)
   const [baseURL, setBaseURL] = useState(settings.apiBaseURL)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(settings.model)
+  const [ragModel, setRagModel] = useState(settings.ragModel || 'jina-v2-base-zh')
+  const [ragStatus, setRagStatus] = useState<RagStatus | null>(null)
+  const [reindexing, setReindexing] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // RAG 状态轮询（对话框打开期间）
+  useEffect(() => {
+    let alive = true
+    const tick = () =>
+      api
+        .ragStatus()
+        .then((s) => alive && setRagStatus(s))
+        .catch(() => undefined)
+    tick()
+    const timer = setInterval(tick, 2000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -31,7 +56,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
   async function save() {
     setSaving(true)
     try {
-      const patch: Record<string, string> = { vaultPath, apiBaseURL: baseURL, model }
+      const patch: Record<string, string> = { vaultPath, apiBaseURL: baseURL, model, ragModel }
       if (apiKey.trim()) patch.apiKey = apiKey.trim()
       const s = await api.saveSettings(patch)
       onSaved(s)
@@ -144,6 +169,45 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
             <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-chat" />
             <div className="hint">需支持 function calling（DeepSeek / GLM / OpenAI / 兼容接口均可）</div>
           </div>
+          <div className="section-title">本地 RAG 知识库检索</div>
+          <div className="field">
+            <label>Embedding 模型（中英双语，本地 ONNX 运行）</label>
+            <select value={ragModel} onChange={(e) => setRagModel(e.target.value)}>
+              {RAG_MODELS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <div className="hint">首次使用自动下载模型；切换模型后全库自动重索引。检索覆盖笔记、PDF 原文与学习器标注/卡片</div>
+          </div>
+          {ragStatus && (
+            <div className="rag-status">
+              <span className={`rag-dot ${ragStatus.status}`} />
+              <span>
+                {ragStatus.status === 'error'
+                  ? ragStatus.error
+                  : ragStatus.status === 'loading'
+                    ? `模型加载中…（${ragStatus.downloadProgress}%）`
+                    : `已索引 ${ragStatus.chunks} 个片段（${ragStatus.files}/${ragStatus.vaultFiles} 个文件）`}
+                {ragStatus.queue > 0 ? ` · 队列中 ${ragStatus.queue}` : ''}
+              </span>
+              <button
+                className="btn"
+                disabled={reindexing}
+                onClick={async () => {
+                  setReindexing(true)
+                  try {
+                    await api.reindexRag()
+                  } finally {
+                    setReindexing(false)
+                  }
+                }}
+              >
+                {reindexing ? '重建中…' : '重建索引'}
+              </button>
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           {testResult && (

@@ -1,4 +1,4 @@
-// 笔记答疑助手：独立于主 agent 的运行循环，会话绑定笔记文件
+// 笔记/文档答疑助手：独立于主 agent 的运行循环，会话绑定笔记或 PDF
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -7,6 +7,9 @@ import { buildTutorPrompt, TUTOR_ROLES } from './tutorPrompts.js'
 import { executeTool } from './tools.js'
 import * as vault from '../vault.js'
 import { graphSummary } from '../graph.js'
+import { loadDoc } from '../pdfstudy.js'
+import { buildStudyContext } from '../pdfcontext.js'
+import { keyFor, getPdf, getOutlineTree, flattenOutline, chapterRangeAt } from '../pdfdoc.js'
 
 const MAX_TOOL_ROUNDS = 8
 const HISTORY_MESSAGES = 30 // 保留最近 30 条消息（15 轮对话）
@@ -62,11 +65,48 @@ function safeParse(s) {
   }
 }
 
-export async function runTutor({ emit, notePath, role, message }) {
+/** PDF 当前章节上下文：按用户当前页定位章节 → 行号原文 + 标注 + 卡片 */
+async function buildPdfContext(relPath, page) {
+  const abs = vault.resolveInVault(relPath)
+  const key = keyFor(relPath)
+  let flat = []
+  let pageCount = 1
+  try {
+    const tree = await getOutlineTree(key, abs)
+    flat = flattenOutline(tree)
+    const pdf = await getPdf(key, abs)
+    pageCount = pdf.numPages
+  } catch {
+    /* 无大纲也能按页锚定 */
+  }
+  let enc = null
+  if (page) {
+    const r = chapterRangeAt(flat, page, pageCount)
+    if (r) enc = { strategy: 'pages', from: r.from, to: r.to, maxChars: 22000 }
+    else enc = { strategy: 'anchor', page, radius: 3, maxChars: 22000 }
+  } else {
+    enc = { strategy: 'pages', from: 1, to: 8, maxChars: 22000 }
+  }
+  const doc = loadDoc(relPath)
+  const ctx = await buildStudyContext({ relPath, annotations: doc.annotations, cards: doc.cards }, enc)
+  const chapters = flat.filter((n) => n.level <= 1).map((n) => `${n.title}（P${n.page ?? '?'}）`)
+  return { text: ctx.text, chapters }
+}
+
+export async function runTutor({ emit, notePath, role, message, page }) {
   if (tutorRun) throw new Error('答疑助手正在回复中')
   if (!TUTOR_ROLES[role]) throw new Error('未知角色：' + role)
-  const noteContent = vault.readFile(notePath) // 不存在会抛错
-  const noteTitle = path.basename(notePath).replace(/\.md$/i, '')
+  const isPdf = /\.pdf$/i.test(notePath)
+  let noteContent
+  let chapters
+  if (isPdf) {
+    const ctx = await buildPdfContext(notePath, Number(page) || 0)
+    noteContent = ctx.text
+    chapters = ctx.chapters
+  } else {
+    noteContent = vault.readFile(notePath) // 不存在会抛错
+  }
+  const noteTitle = path.basename(notePath).replace(/\.(md|pdf)$/i, '')
 
   const controller = new AbortController()
   tutorRun = { controller, notePath }
@@ -81,6 +121,8 @@ export async function runTutor({ emit, notePath, role, message }) {
         noteTitle,
         noteContent,
         graphSummary: graphSummary(),
+        isPdf,
+        chapters,
       }),
     },
     ...history,

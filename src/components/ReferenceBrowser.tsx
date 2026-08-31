@@ -6,6 +6,7 @@ interface Props {
   tree: TreeNode[]
   dark: boolean
   onOpenNote: (path: string) => void
+  onOpenPdf: (path: string) => void
 }
 
 /** 从文件树中摘出 资料/ 子树（旧版结构） */
@@ -43,7 +44,7 @@ function kindOf(name: string): 'md' | 'pdf' | 'image' | 'text' | 'other' {
 }
 
 /** 资料预览器：浏览所有主题的 reference/ 资料分区（兼容旧版 资料/ 目录） */
-export default function ReferenceBrowser({ tree, dark, onOpenNote }: Props) {
+export default function ReferenceBrowser({ tree, dark, onOpenNote, onOpenPdf }: Props) {
   const files = useMemo(() => flatten(tree).filter((f) => isReferenceFile(f.path)), [tree])
   const [selected, setSelected] = useState<string | null>(null)
   const [mdContent, setMdContent] = useState<string | null>(null)
@@ -115,9 +116,19 @@ export default function ReferenceBrowser({ tree, dark, onOpenNote }: Props) {
         )}
         {kind === 'md' && mdContent === null && <div className="empty-state">加载中…</div>}
         {kind === 'pdf' && selected && (
-          <embed src={`/api/raw?path=${encodeURIComponent(selected)}`} type="application/pdf" className="refs-pdf" />
-        )}
-        {kind === 'image' && selected && (
+          <div className="refs-pdf-wrap">
+            <div className="refs-pdf-bar">
+              <span className="refs-pdf-name" title={selected}>
+                {selected.split('/').pop()}
+              </span>
+              <button className="btn primary" onClick={() => onOpenPdf(selected)}>
+                <span className="material-symbols-rounded">auto_stories</span>
+                在学习器中打开（标注 / 卡片 / 答疑）
+              </button>
+            </div>
+            <embed src={`/api/raw?path=${encodeURIComponent(selected)}`} type="application/pdf" className="refs-pdf" />
+          </div>
+        )}        {kind === 'image' && selected && (
           <div className="refs-image">
             <img src={`/api/raw?path=${encodeURIComponent(selected)}`} alt={selected} />
           </div>

@@ -37,9 +37,10 @@ function buildTree(absDir, relDir = '') {
   } catch {
     return out
   }
-  // 资料/（旧版）与 reference/（新版）目录下展示全部文件类型（PDF/图片等供预览器使用）
+  // 资料/（旧版）、附件/（上传目录）与 reference/（新版）目录下展示全部文件类型（PDF/图片等）
   const segs = relDir.split('/')
-  const includeAll = segs[0] === '资料' || segs.includes('reference') || segs.includes('papers') || segs.includes('web')
+  const includeAll =
+    segs[0] === '资料' || segs[0] === '附件' || segs.includes('reference') || segs.includes('papers') || segs.includes('web')
   for (const ent of entries) {
     if (ent.name.startsWith('.') && IGNORED_DIRS.has(ent.name)) continue
     const rel = relDir ? relDir + '/' + ent.name : ent.name
@@ -66,7 +67,13 @@ export function getTree() {
 }
 
 export function listAllNotes() {
-  const notes = []
+  return listAllFiles(['.md'])
+}
+
+/** 列出 vault 内指定扩展名（含点、小写比较）的全部文件（相对路径） */
+export function listAllFiles(extensions) {
+  const exts = new Set(extensions.map((e) => e.toLowerCase()))
+  const out = []
   function walk(dir, rel) {
     let entries = []
     try {
@@ -78,11 +85,11 @@ export function listAllNotes() {
       if (IGNORED_DIRS.has(ent.name)) continue
       const r = rel ? rel + '/' + ent.name : ent.name
       if (ent.isDirectory()) walk(path.join(dir, ent.name), r)
-      else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) notes.push(r)
+      else if (ent.isFile() && exts.has(ent.name.slice(ent.name.lastIndexOf('.')).toLowerCase())) out.push(r)
     }
   }
   walk(vaultRoot, '')
-  return notes
+  return out
 }
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
@@ -147,13 +154,18 @@ function startWatcher() {
   if (watcher) watcher.close()
   watcher = chokidar.watch(vaultRoot, {
     ignoreInitial: true,
-    ignored: (p) => {
+    ignored: (p, stats) => {
       const rel = path.relative(vaultRoot, p)
       if (!rel) return false
       const first = rel.split(path.sep)[0]
       if (IGNORED_DIRS.has(first)) return true
-      // 只关心 md 与 知识图谱.json
-      return !rel.endsWith('.md') && path.basename(rel) !== '知识图谱.json'
+      // 目录不能剪枝，否则递归监听失效（只关心 md、pdf 与 知识图谱.json）
+      if (stats ? stats.isDirectory() : fs.existsSync(p) && fs.statSync(p).isDirectory()) return false
+      return (
+        !rel.endsWith('.md') &&
+        !rel.toLowerCase().endsWith('.pdf') &&
+        path.basename(rel) !== '知识图谱.json'
+      )
     },
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 80 },
   })

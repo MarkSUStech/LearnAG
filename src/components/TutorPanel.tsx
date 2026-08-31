@@ -27,6 +27,21 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
   const [status, setStatus] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // PDF 文档答疑：记录阅读器上报的当前页（服务端据此定位当前章节）
+  const pageRef = useRef(0)
+  useEffect(() => {
+    pageRef.current = 0
+    function onPage(e: Event) {
+      try {
+        const d = JSON.parse((e as MessageEvent).data)
+        if (d.path === notePath && typeof d.page === 'number') pageRef.current = d.page
+      } catch {
+        /* ignore */
+      }
+    }
+    window.addEventListener('pdf-page', onPage as EventListener)
+    return () => window.removeEventListener('pdf-page', onPage as EventListener)
+  }, [notePath])
 
   // 打开时载入该笔记的历史会话（兜底过滤：只保留对话消息）
   useEffect(() => {
@@ -103,7 +118,7 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
     setStatus('思考中…')
     setMessages((m) => [...m, { role: 'user', content: text }])
     try {
-      await api.tutorSend(notePath, role, text)
+      await api.tutorSend(notePath, role, text, pageRef.current || undefined)
     } catch (e) {
       setRunning(false)
       setStatus('')

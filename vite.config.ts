@@ -12,7 +12,11 @@ export default defineConfig({
       },
     },
   },
+  worker: {
+    // pdf.js worker 以 ESM 引入，必须用 es 格式打包
+    format: 'es',
+  },
   build: {
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 4000,
   },
 })
