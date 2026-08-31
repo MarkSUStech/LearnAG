@@ -1,4 +1,6 @@
 import type { Node as PMNode } from '@milkdown/kit/prose/model'
+import type { EditorView } from '@milkdown/kit/prose/view'
+import { TextSelection } from '@milkdown/kit/prose/state'
 import mermaid from 'mermaid'
 import katex from 'katex'
 import { isBeautifulSupported, renderBeautiful } from './beautifulMermaid'
@@ -28,13 +30,62 @@ export interface CodeBlockNodeViewOptions {
 }
 
 /**
+ * 空代码块的编辑兜底（自定义 nodeView 下 PM 的两个坑）：
+ * 1. 点击空 contentDOM 时 PM 无法把光标放进空块（焦点落到 body/根节点）——
+ *    mousedown 时显式把 selection 放进块内；
+ * 2. 空块内退格：PM 默认 joinBackward 在表格等非文本块相邻时只会选中前一个节点，
+ *    空块永远删不掉——document 捕获阶段拦截，把整块替换为空段落。
+ * keydown 必须挂 document 捕获：焦点在 PM 根节点时事件路径不经过 nodeView 的 DOM。
+ */
+function bindEmptyBlockFix(
+  dom: HTMLElement,
+  contentDOM: HTMLElement,
+  getNode: () => PMNode,
+  view: EditorView,
+  getPos: (() => number | undefined) | undefined,
+) {
+  dom.addEventListener(
+    'mousedown',
+    (e) => {
+      const t = e.target as Node
+      if (t !== contentDOM && !contentDOM.contains(t)) return
+      if (getNode().textContent.trim() !== '') return
+      const pos = typeof getPos === 'function' ? getPos() : undefined
+      if (pos == null) return
+      e.preventDefault()
+      e.stopPropagation()
+      const st = view.state
+      view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, pos + 1)))
+      view.focus()
+    },
+    true,
+  )
+
+  const onKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Backspace' || e.defaultPrevented) return
+    if (getNode().textContent.trim() !== '') return
+    const st = view.state
+    if (!st.selection.empty) return
+    const pos = typeof getPos === 'function' ? getPos() : undefined
+    if (pos == null) return
+    if (st.selection.from !== pos + 1) return // 光标必须在该空块的内容起点
+    e.preventDefault()
+    e.stopPropagation()
+    view.dispatch(st.tr.replaceWith(pos, pos + getNode().nodeSize, st.schema.nodes.paragraph.create()))
+    view.focus()
+  }
+  document.addEventListener('keydown', onKeydown, true)
+  return () => document.removeEventListener('keydown', onKeydown, true)
+}
+
+/**
  * code_block 的自定义 nodeView（覆盖 CodeMirror 默认渲染）：
  * - 语言 mermaid → 渲染 Mermaid 图表，可点击切换源码编辑
  * - 语言 latex（Crepe 把 $$..$$ 块转换为 LaTeX 代码块）→ katex 渲染，可点击切换源码编辑
  * - 其他语言 → 普通 pre/code 块
  */
 export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
-  return (node: PMNode) => {
+  return (node: PMNode, view: EditorView, getPos: (() => number | undefined) | undefined) => {
     const lang = String(node.attrs.language ?? '').toLowerCase()
     let current = node
 
@@ -72,6 +123,7 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
       contentDOM.className = 'mermaid-src'
 
       dom.append(bar, diagram, contentDOM)
+      const disposeEmptyFix = bindEmptyBlockFix(dom, contentDOM, () => current, view, getPos)
 
       let renderToken = 0
       let lastRendered: string | null = null
@@ -122,6 +174,9 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
         stopEvent() {
           return false
         },
+        destroy() {
+          disposeEmptyFix()
+        },
       }
     }
 
@@ -160,6 +215,7 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
     contentDOM.className = 'mermaid-src'
 
     dom.append(bar, diagram, contentDOM)
+    const disposeEmptyFix = bindEmptyBlockFix(dom, contentDOM, () => current, view, getPos)
     let renderToken = 0
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     let lastRendered: string | null = null
@@ -265,6 +321,9 @@ export function codeBlockNodeView({ isDark }: CodeBlockNodeViewOptions) {
       },
       stopEvent() {
         return false
+      },
+      destroy() {
+        disposeEmptyFix()
       },
     }
   }
