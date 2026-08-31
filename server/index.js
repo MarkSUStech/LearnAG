@@ -286,6 +286,7 @@ app.post('/api/agent', async (req, res) => {
     if (e.name === 'AbortError') {
       emit({ type: 'agent-done', stopped: true })
     } else {
+      console.error('[agent] 运行失败:', e?.stack || e)
       emit({ type: 'agent-done', error: String(e.message || e) })
     }
   })
@@ -425,6 +426,7 @@ app.post('/api/tutor', async (req, res) => {
     if (e.name === 'AbortError') {
       emit({ type: 'tutor-done', path: notePath, stopped: true })
     } else {
+      console.error('[tutor] 运行失败:', e?.stack || e)
       emit({ type: 'tutor-done', path: notePath, error: String(e.message || e) })
     }
   }

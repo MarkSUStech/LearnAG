@@ -5,6 +5,7 @@ import * as vault from '../vault.js'
 import { graphSummary } from '../graph.js'
 import { buildSystemPrompt, AGENT_WORKBENCH, MEMORY_NOTE, PLAN_NOTE } from './prompt.js'
 import { toolDefs, executeTool } from './tools.js'
+import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
 
 const MAX_TOOL_ROUNDS = 30
@@ -191,52 +192,81 @@ function apiConfig() {
   return { base: apiBaseURL.replace(/\/+$/, ''), apiKey, model }
 }
 
-export async function* streamChat({ messages, signal }) {  const { base, apiKey, model } = apiConfig()
-  const res = await fetch(base + '/chat/completions', {
-    method: 'POST',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + apiKey,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      tools: toolDefs,
-      stream: true,
-      temperature: 0.7,
-    }),
-  })
-  if (!res.ok) {
-    let detail = ''
+export async function* streamChat({ messages, signal }) {
+  const { base, apiKey, model } = apiConfig()
+  let received = false // 是否已向调用方流出内容：流出后不能静默重试（会重复输出）
+  for (let attempt = 1; ; attempt++) {
     try {
-      detail = (await res.text()).slice(0, 500)
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`AI 服务返回 ${res.status}：${detail}`)
-  }
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    let idx
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim()
-      buf = buf.slice(idx + 1)
-      if (!line.startsWith('data:')) continue
-      const payload = line.slice(5).trim()
-      if (payload === '[DONE]') return
-      try {
-        const json = JSON.parse(payload)
-        const delta = json.choices?.[0]?.delta
-        if (delta) yield { delta, finishReason: json.choices?.[0]?.finish_reason }
-      } catch {
-        /* 忽略无法解析的心跳/注释行 */
+      const res = await fetch(base + '/chat/completions', {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          tools: toolDefs,
+          stream: true,
+          temperature: 0.7,
+        }),
+      })
+      if (!res.ok) {
+        let detail = ''
+        try {
+          detail = (await res.text()).slice(0, 500)
+        } catch {
+          /* ignore */
+        }
+        const err = new Error(`AI 服务返回 ${res.status}：${detail}`)
+        if (attempt < 3 && (res.status === 429 || res.status >= 500)) {
+          console.warn(`[net] 模型服务 ${res.status}，${800 * attempt}ms 后重试（第 ${attempt + 1} 次）`)
+          await sleep(800 * attempt)
+          continue
+        }
+        throw err
       }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let idx
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).trim()
+          buf = buf.slice(idx + 1)
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (payload === '[DONE]') return
+          try {
+            const json = JSON.parse(payload)
+            const delta = json.choices?.[0]?.delta
+            if (delta) {
+              received = true
+              yield { delta, finishReason: json.choices?.[0]?.finish_reason }
+            }
+          } catch {
+            /* 忽略无法解析的心跳/注释行 */
+          }
+        }
+      }
+      return
+    } catch (e) {
+      // 用户主动停止：绝不重试
+      if (signal?.aborted || e?.name === 'AbortError') throw e
+      if (received) {
+        // 流已输出一半才断线：不能重放，说明情况让用户重试
+        throw new Error('模型流式响应中断（' + netErrInfo(e) + '），本轮回答不完整，请重新发送')
+      }
+      if (attempt < 3 && isTransientNetErr(e)) {
+        console.warn(`[net] streamChat 第 ${attempt} 次失败（${netErrInfo(e)}），${600 * attempt}ms 后重试`)
+        await sleep(600 * attempt)
+        continue
+      }
+      throw new Error('连接模型服务失败：' + netErrInfo(e))
     }
   }
 }
@@ -244,14 +274,23 @@ export async function* streamChat({ messages, signal }) {  const { base, apiKey,
 /** 非流式单次调用（用于历史压缩等辅助任务） */
 async function chatOnce(messages) {
   const { base, apiKey, model } = apiConfig()
-  const res = await fetch(base + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-    body: JSON.stringify({ model, messages, stream: false, temperature: 0.3, max_tokens: 800 }),
-  })
-  if (!res.ok) throw new Error('压缩调用失败 ' + res.status)
-  const json = await res.json()
-  return json.choices?.[0]?.message?.content ?? ''
+  return withRetry(
+    async () => {
+      const res = await fetch(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+        body: JSON.stringify({ model, messages, stream: false, temperature: 0.3, max_tokens: 800 }),
+      })
+      if (!res.ok) {
+        const err = new Error('AI 服务返回 ' + res.status)
+        err.status = res.status
+        throw err
+      }
+      const json = await res.json()
+      return json.choices?.[0]?.message?.content ?? ''
+    },
+    { tries: 3, label: '辅助调用', signal: undefined },
+  )
 }
 
 // ── 滚动压缩 ────────────────────────────────────────────────────────────────
