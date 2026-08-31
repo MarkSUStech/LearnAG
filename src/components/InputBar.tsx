@@ -22,7 +22,9 @@ const PLACEHOLDER: Record<Mode, string> = {
 
 export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering }: Props) {
   const [text, setText] = useState('')
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const hadQuestion = useRef(false)
 
   useEffect(() => {
     const ta = taRef.current
@@ -30,6 +32,19 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 96) + 'px'
   }, [text])
+
+  // 新提问出现时自动展开：问题卡片不能被收起状态淹没
+  const hasQuestion = Boolean(topSlot)
+  useEffect(() => {
+    if (hasQuestion && !hadQuestion.current) setCollapsed(false)
+    hadQuestion.current = hasQuestion
+  }, [hasQuestion])
+
+  function setDock(next: boolean) {
+    setCollapsed(next)
+    if (next) localStorage.setItem('la-dock-collapsed', '1')
+    else localStorage.removeItem('la-dock-collapsed')
+  }
 
   function submit() {
     const t = text.trim()
@@ -40,49 +55,66 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
   }
 
   return (
-    <div className="dock">
-      {planChip}
-      {topSlot}
-      <div className={`status-line ${agent.message.startsWith('出错') ? 'err' : ''}`}>
-        {agent.running && <span className="material-symbols-rounded spin">progress_activity</span>}
-        {agent.message && <span>{agent.message}</span>}
-      </div>
-      <div className="input-bar">
-        <div className="mode-switch">
-          {(['教学', '探索', '目标'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              className={`mode-btn ${mode === m ? 'active' : ''}`}
-              onClick={() => onModeChange(m)}
-              title={modeTitle(m)}
-            >
-              <span className="material-symbols-rounded">{modeIcon(m)}</span>
-              {m}
-            </button>
-          ))}
+    <div className={`dock${collapsed ? ' dock-collapsed' : ''}`}>
+      <button
+        className="dock-toggle dock-expand"
+        title="展开输入栏"
+        onClick={() => setDock(false)}
+      >
+        <span className="material-symbols-rounded">keyboard_arrow_up</span>
+        {agent.running && <i className="dock-running-dot" />}
+      </button>
+      <div className="dock-content">
+        <button
+          className="dock-toggle dock-collapse"
+          title="收起输入栏"
+          onClick={() => setDock(true)}
+        >
+          <span className="material-symbols-rounded">keyboard_arrow_down</span>
+        </button>
+        {planChip}
+        {topSlot}
+        <div className={`status-line ${agent.message.startsWith('出错') ? 'err' : ''}`}>
+          {agent.running && <span className="material-symbols-rounded spin">progress_activity</span>}
+          {agent.message && <span>{agent.message}</span>}
         </div>
-        <textarea
-          ref={taRef}
-          rows={1}
-          value={text}
-          placeholder={answering ? '回答 AI 的提问…（Enter 直接提交答案）' : PLACEHOLDER[mode]}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-        />
-        {agent.running && !answering ? (
-          <button className="send-btn stop" title="停止" onClick={onStop}>
-            <span className="material-symbols-rounded">stop</span>
-          </button>
-        ) : (
-          <button className="send-btn" title={answering ? '提交回答' : '发送'} onClick={submit} disabled={!text.trim()}>
-            <span className="material-symbols-rounded">send</span>
-          </button>
-        )}
+        <div className="input-bar">
+          <div className="mode-switch">
+            {(['教学', '探索', '目标'] as Mode[]).map((m) => (
+              <button
+                key={m}
+                className={`mode-btn ${mode === m ? 'active' : ''}`}
+                onClick={() => onModeChange(m)}
+                title={modeTitle(m)}
+              >
+                <span className="material-symbols-rounded">{modeIcon(m)}</span>
+                {m}
+              </button>
+            ))}
+          </div>
+          <textarea
+            ref={taRef}
+            rows={1}
+            value={text}
+            placeholder={answering ? '回答 AI 的提问…（Enter 直接提交答案）' : PLACEHOLDER[mode]}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+          />
+          {agent.running && !answering ? (
+            <button className="send-btn stop" title="停止" onClick={onStop}>
+              <span className="material-symbols-rounded">stop</span>
+            </button>
+          ) : (
+            <button className="send-btn" title={answering ? '提交回答' : '发送'} onClick={submit} disabled={!text.trim()}>
+              <span className="material-symbols-rounded">send</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
