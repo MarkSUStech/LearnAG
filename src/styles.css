@@ -4325,3 +4325,27 @@ sup[data-type='footnote_reference']:hover {
   margin-left: auto;
   color: var(--text-3);
 }
+
+/* 提问卡：自定义回答输入 */
+.q-custom textarea {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.q-custom textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.q-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

@@ -210,7 +210,34 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
         }, 1200)
       })
     })
-    bar.append(langTag, toggleBtn, copyBtn)
+    // AI 重写：把当前代码（含渲染报错）发给 AI 重新生成这一段
+    let lastError = ''
+    let aiRewriteBtn: HTMLButtonElement | null = null
+    if (isMermaid && notePath) {
+      aiRewriteBtn = document.createElement('button')
+      aiRewriteBtn.type = 'button'
+      aiRewriteBtn.textContent = 'AI 重写'
+      aiRewriteBtn.title = '把这段图（含渲染报错）发给 AI 重新生成'
+      aiRewriteBtn.addEventListener('click', () => {
+        const btn = aiRewriteBtn!
+        if (btn.textContent !== 'AI 重写') return
+        btn.textContent = '请求中…'
+        void fetch('/api/mermaid-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: notePath, code: current.textContent, error: lastError, force: true }),
+        })
+          .catch(() => undefined)
+          .finally(() => {
+            setTimeout(() => {
+              btn.textContent = 'AI 重写'
+            }, 1200)
+          })
+      })
+      bar.append(langTag, toggleBtn, copyBtn, aiRewriteBtn)
+    } else {
+      bar.append(langTag, toggleBtn, copyBtn)
+    }
 
     const diagram = document.createElement('div')
     diagram.className = 'mermaid-diagram'
@@ -265,6 +292,7 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
       const my = ++renderToken
       const code = current.textContent
       lastRendered = code
+      lastError = ''
       // 新渲染开始：撤销尚未发出的修复上报（内容仍在变化中）
       if (fixTimer) {
         clearTimeout(fixTimer)
@@ -321,6 +349,7 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
         const msg = typeof e === 'string' ? e : ((e as Error)?.message ?? String(e))
         diagram.textContent = (isMermaid ? 'Mermaid' : 'LaTeX') + ' 渲染失败（可点击"编辑源码"修正）：\n' + msg.slice(0, 300)
         // mermaid 语法错误 → 上报 AI 只修这一段
+        if (isMermaid) lastError = msg.slice(0, 600)
         if (isMermaid && code.trim()) scheduleAutoFix(code, msg.slice(0, 600))
       } finally {
         if (my === renderToken) diagram.classList.remove('loading')

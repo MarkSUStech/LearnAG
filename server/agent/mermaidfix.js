@@ -32,15 +32,17 @@ function stripFences(s) {
   return t.trim()
 }
 
-export async function reportMermaidFailure({ path, code, error }) {
+export async function reportMermaidFailure({ path, code, error, force = false }) {
   try {
     if (typeof path !== 'string' || !/\.md$/i.test(path)) return { ok: false, reason: 'invalid path' }
     if (typeof code !== 'string' || !code.trim()) return { ok: false, reason: 'empty code' }
     if (isPathStreaming(path)) return { ok: false, reason: 'agent 正在写入该笔记，跳过' }
 
     const now = Date.now()
-    if (now - (lastReport.get(path) ?? 0) < DEBOUNCE_MS) return { ok: false, reason: 'debounce' }
-    if (!allow(path)) return { ok: false, reason: 'rate limit' }
+    if (!force) {
+      if (now - (lastReport.get(path) ?? 0) < DEBOUNCE_MS) return { ok: false, reason: 'debounce' }
+      if (!allow(path)) return { ok: false, reason: 'rate limit' }
+    }
     lastReport.set(path, now)
 
     // 在文件里定位这段代码块（以围栏块整体匹配）

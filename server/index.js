@@ -600,12 +600,14 @@ app.post('/api/rag/reindex', async (req, res) => {
 // ── mermaid 渲染失败自动修复（前端上报，只修坏掉的那段代码块） ──────────────
 
 app.post('/api/mermaid-fix', (req, res) => {
-  const { path: p, code, error } = req.body ?? {}
+  const { path: p, code, error, force } = req.body ?? {}
   if (typeof p !== 'string' || typeof code !== 'string') {
     return res.status(400).json({ error: '需要 path 与 code' })
   }
   res.json({ queued: true })
-  void reportMermaidFailure({ path: p, code, error: String(error ?? '') })
+  reportMermaidFailure({ path: p, code, error: String(error ?? ''), force: Boolean(force) })
+    .then((r) => console.log('[mermaid-fix] 结果:', JSON.stringify(r)))
+    .catch((e) => console.error('[mermaid-fix] 异常:', e?.message || e))
 })
 
 // ── 翻译（选区翻译，SSE 流式） ──────────────────────────────────────────────

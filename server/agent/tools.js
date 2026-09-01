@@ -18,7 +18,7 @@ export const toolDefs = [
     function: {
       name: 'ask_user',
       description:
-        '向用户提出结构化问题并等待回答，用户会在输入框上方的卡片里作答。适用场景：' +
+        '向用户提出结构化问题并等待回答，用户会在输入框上方的卡片里作答（所有题型都自带「自定义回答」入口，用户可能用自由文本回答——按其内容严肃判定，与选项同等计分）。适用场景：' +
         '摸底测评（一道一问，type=text 简答或 judge 判断）、判断题确认（judge）、' +
         '候选/路径选择（single）、多选（multi）、需要用户上传代码或文件（file）。' +
         '提问时对话会暂停，用户回答后你在工具结果中拿到答案。每次只提一个问题。' +
@@ -488,9 +488,24 @@ function checkNoteStyle(rel, content) {
         `请再调用一次 write_note 重写本笔记，补充图表：结构/关系用 flowchart 或 classDiagram，动态过程用 sequenceDiagram 或 stateDiagram`,
     )
   }
-  const lines = content.split('\n').length
-  if (lines > 110) {
-    hints.push(`本笔记已达 ${lines} 行（范式预算 ≤70 行）。` + '请考虑按「笔记拆分规范」把例题或推导拆为独立笔记，或精简正文。')
+  const lines = content.split(`\n`).length
+  if (lines > 140) {
+    hints.push(`本笔记已达 ${lines} 行（范式预算 60~120 行）。` + '请考虑按「笔记拆分规范」把例题或推导拆为独立笔记，或精简正文。')
   }
-  return hints.length ? hints.join('；') : null
+  // 内容深度检查：小节只有一两句话、或只有图没有正文解读 → 提示加厚
+  const thin = []
+  for (const sec of content.split(/\n(?=#{2,3}\s)/)) {
+    const head = (sec.match(/^#{2,3}\s+(.+)$/m) || [])[1] || ""
+    if (!head || /总览|参考文献/.test(head)) continue
+    const bodyLines = sec.split(`\n`).filter((l) => {
+      const t2 = l.trim()
+      return t2 && !t2.startsWith("#") && !t2.startsWith("``") && !t2.startsWith("|") && !t2.startsWith(">")
+    })
+    const hasChart = sec.includes("``mermaid")
+    if (hasChart && bodyLines.length < 3) thin.push(head)
+    else if (!hasChart && bodyLines.length < 2) thin.push(head)
+  }
+  if (thin.length) {
+    hints.push(`以下小节内容单薄（只有一两句话、或只有图没有正文解读）：${thin.join("、")}。每张图后必须跟 3 句以上的正文解读，每个小节都要有实质讲解，请重写加厚这些小节。`)
+  }  return hints.length ? hints.join('；') : null
 }

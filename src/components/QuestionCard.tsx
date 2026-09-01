@@ -147,29 +147,6 @@ export default function QuestionCard({ question, onAnswered, onError }: Props) {
                 </button>
               ))}
             </div>
-            {question.allowCustom && (
-              <div className="q-custom">
-                <button className="q-option" onClick={() => setShowCustom((s) => !s)}>
-                  <span className="material-symbols-rounded">edit</span>其他…
-                </button>
-                {showCustom && (
-                  <>
-                    <input
-                      value={customText}
-                      autoFocus
-                      placeholder="输入你的回答"
-                      onChange={(e) => setCustomText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && customText.trim()) void submit(customText.trim(), customText.trim())
-                      }}
-                    />
-                    <button className="q-submit" disabled={!customText.trim()} onClick={() => void submit(customText.trim(), customText.trim())}>
-                      提交
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
             {question.type === 'multi' && (
               <div className="q-actions">
                 <button className="q-submit" disabled={multiSel.length === 0} onClick={() => void submit(multiSel, multiSel.join('、'))}>
@@ -188,6 +165,35 @@ export default function QuestionCard({ question, onAnswered, onError }: Props) {
             <button className="q-option" onClick={() => void submit('不对', '不对')}>
               <span className="material-symbols-rounded">close</span>不对
             </button>
+          </div>
+        )}
+
+        {/* 自定义回答：所有题型（判断/单选/多选/简答）都可用自由文本作答 */}
+        {question.type !== 'file' && (
+          <div className="q-custom">
+            <button className="q-option" onClick={() => setShowCustom((v) => !v)}>
+              <span className="material-symbols-rounded">edit</span>
+              {showCustom ? '收起自定义回答' : '自定义回答…'}
+            </button>
+            {showCustom && (
+              <>
+                <textarea
+                  ref={taRef}
+                  rows={2}
+                  autoFocus
+                  placeholder="用自己的话回答（与选项同等计分，认真作答）…（Ctrl+Enter 提交）"
+                  onChange={(e) => setCustomText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && customText.trim()) {
+                      void submit(customText.trim(), customText.trim().slice(0, 30))
+                    }
+                  }}
+                />
+                <button className="q-submit" disabled={!customText.trim()} onClick={() => void submit(customText.trim(), customText.trim().slice(0, 30))}>
+                  提交自定义回答
+                </button>
+              </>
+            )}
           </div>
         )}
 
