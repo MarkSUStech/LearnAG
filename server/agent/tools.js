@@ -477,6 +477,8 @@ function parseFrontmatter(content) {
 }
 
 /** 知识笔记范式符合度检查：图表密度与篇幅，不足时返回给模型的提示 */
+const styleHintedAt = new Map() // rel -> 上次风格提示时间
+
 function checkNoteStyle(rel, content) {
   if (!rel.startsWith('笔记/') || !rel.includes('/note/')) return null
   if (/总览/.test(path.basename(rel))) return null // 总览目录笔记豁免
@@ -507,5 +509,14 @@ function checkNoteStyle(rel, content) {
   }
   if (thin.length) {
     hints.push(`以下小节内容单薄（只有一两句话、或只有图没有正文解读）：${thin.join("、")}。每张图后必须跟 3 句以上的正文解读，每个小节都要有实质讲解，请重写加厚这些小节。`)
-  }  return hints.length ? hints.join('；') : null
+  }
+  if (!hints.length) {
+    styleHintedAt.delete(rel)
+    return null
+  }
+  // 防循环：同一篇笔记 10 分钟内只提示一次风格问题，避免模型无限重写同一文件
+  const lastHinted = styleHintedAt.get(rel) ?? 0
+  if (Date.now() - lastHinted < 10 * 60 * 1000) return null
+  styleHintedAt.set(rel, Date.now())
+  return hints.length ? hints.join('；') : null
 }

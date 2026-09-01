@@ -468,6 +468,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
       // 空回合重试：免费模型偶尔返回空流（只有 reasoning 或被截断）
       let emptyRetries = 0
       while (true) {
+        emit({ type: 'agent-status', stage: 'thinking', message: '正在思考与生成…' })
         for await (const { delta, finishReason: fr } of streamChat({ messages, signal: abort.signal })) {
           finishReason = fr
           if (delta.content) {

@@ -2,7 +2,7 @@
 // 这里只把坏掉的那一段代码块交给 LLM 修正，并精确替换文件中的该块——
 // 不重写整篇笔记。带防抖 / 频率限制 / agent 流式写入守卫，避免循环修复。
 import * as vault from '../vault.js'
-import { isPathStreaming, chatOnce } from './runner.js'
+import { isPathStreaming, isRunning, chatOnce } from './runner.js'
 
 const WINDOW_MS = 5 * 60 * 1000
 const MAX_ATTEMPTS = 3 // 每篇笔记每 5 分钟最多自动修 3 次
@@ -37,6 +37,7 @@ export async function reportMermaidFailure({ path, code, error, force = false })
     if (typeof path !== 'string' || !/\.md$/i.test(path)) return { ok: false, reason: 'invalid path' }
     if (typeof code !== 'string' || !code.trim()) return { ok: false, reason: 'empty code' }
     if (isPathStreaming(path)) return { ok: false, reason: 'agent 正在写入该笔记，跳过' }
+    if (!force && isRunning()) return { ok: false, reason: 'agent 运行中，自动修复暂停' }
 
     const now = Date.now()
     if (!force) {
