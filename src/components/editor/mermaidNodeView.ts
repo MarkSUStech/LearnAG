@@ -220,18 +220,33 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
       aiRewriteBtn.title = '把这段图（含渲染报错）发给 AI 重新生成'
       aiRewriteBtn.addEventListener('click', () => {
         const btn = aiRewriteBtn!
-        if (btn.textContent !== 'AI 重写') return
+        if (btn.dataset.busy === '1') return
+        btn.dataset.busy = '1'
         btn.textContent = '请求中…'
         void fetch('/api/mermaid-fix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: notePath, code: current.textContent, error: lastError, force: true }),
         })
-          .catch(() => undefined)
-          .finally(() => {
+          .then((r) => r.json())
+          .then((j: { ok?: boolean; reason?: string }) => {
+            if (j.ok) {
+              btn.textContent = '已重写 ✓'
+            } else {
+              btn.textContent = (j.reason || '未能修改').slice(0, 18)
+            }
             setTimeout(() => {
               btn.textContent = 'AI 重写'
-            }, 1200)
+            }, 2600)
+          })
+          .catch(() => {
+            btn.textContent = '请求失败'
+            setTimeout(() => {
+              btn.textContent = 'AI 重写'
+            }, 2000)
+          })
+          .finally(() => {
+            delete btn.dataset.busy
           })
       })
       bar.append(langTag, toggleBtn, copyBtn, aiRewriteBtn)
