@@ -47,17 +47,46 @@ function parseDefText(t: string): CiteInfo {
 
 // ── 悬浮卡片（body 级单例） ─────────────────────────────────────────────────
 
+const BADGE_SELECTOR = ".cite-badge, sup[data-type='footnote_reference']"
+
 let popEl: HTMLElement | null = null
 let popHideTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleHide(ms = 350) {
+  if (popHideTimer) clearTimeout(popHideTimer)
+  popHideTimer = setTimeout(hideCitePopup, ms)
+}
+
+function cancelHide() {
+  if (popHideTimer) {
+    clearTimeout(popHideTimer)
+    popHideTimer = null
+  }
+}
+
+// 全局兜底：卡片打开时鼠标移动到角标/卡片之外，立即隐藏（防止快速移动漏掉 mouseout）
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'mousemove',
+    (e) => {
+      if (!popEl?.classList.contains('open')) return
+      const t = e.target as HTMLElement
+      if (t?.closest?.('.cite-pop') || t?.closest?.(BADGE_SELECTOR)) {
+        cancelHide() // 悬停在角标/卡片上：取消待执行的隐藏
+        return
+      }
+      hideCitePopup()
+    },
+    true,
+  )
+}
 
 function ensurePop(): HTMLElement {
   if (popEl) return popEl
   popEl = document.createElement('div')
   popEl.className = 'cite-pop'
-  popEl.addEventListener('mouseenter', () => {
-    if (popHideTimer) clearTimeout(popHideTimer)
-  })
-  popEl.addEventListener('mouseleave', () => hideCitePopup())
+  popEl.addEventListener('mouseenter', () => cancelHide())
+  popEl.addEventListener('mouseleave', () => scheduleHide(180))
   document.body.appendChild(popEl)
   return popEl
 }
@@ -128,21 +157,22 @@ export function showCitePopup(anchor: HTMLElement, num: number, info: CiteInfo) 
   pop.style.top = Math.max(8, y) + 'px'
 }
 
-/** 事件委托：root 内的 .cite-badge 悬停即弹出来源卡片；返回清理函数 */
+/** 事件委托：root 内的引用角标悬停即弹出来源卡片；鼠标离开角标与卡片后自动消失；返回清理函数 */
 export function attachCiteHover(root: HTMLElement, resolve: (num: number) => CiteInfo | undefined): () => void {
-  let hideTimer: ReturnType<typeof setTimeout> | null = null
+  const badgeOf = (e: MouseEvent) =>
+    (e.target as HTMLElement)?.closest?.(".cite-badge, sup[data-type='footnote_reference']") as HTMLElement | null
   const onOver = (e: MouseEvent) => {
-    const badge = (e.target as HTMLElement)?.closest?.(".cite-badge, sup[data-type='footnote_reference']") as HTMLElement | null
+    const badge = badgeOf(e)
     if (!badge) return
     const num = parseInt(badge.dataset.ref ?? badge.dataset.label ?? '', 10)
     const info = Number.isFinite(num) ? resolve(num) : undefined
     if (!info) return
-    if (hideTimer) clearTimeout(hideTimer)
+    cancelHide()
     showCitePopup(badge, num, info)
   }
   const onOut = (e: MouseEvent) => {
-    if (!(e.target as HTMLElement)?.closest?.('.cite-badge')) return
-    hideTimer = setTimeout(hideCitePopup, 180)
+    if (!badgeOf(e)) return
+    scheduleHide(350)
   }
   root.addEventListener('mouseover', onOver)
   root.addEventListener('mouseout', onOut)
