@@ -223,10 +223,15 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
         if (btn.dataset.busy === '1') return
         btn.dataset.busy = '1'
         btn.textContent = '请求中…'
+        const codeNow = current.textContent
+        if (lastError) {
+          fixAttempts.push({ code: codeNow, error: lastError })
+          fixAttempts = fixAttempts.slice(-3)
+        }
         void fetch('/api/mermaid-fix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: notePath, code: current.textContent, error: lastError, force: true }),
+          body: JSON.stringify({ path: notePath, code: codeNow, error: lastError, force: true, attempts: fixAttempts.slice(-3) }),
         })
           .then((r) => r.json())
           .then((j: { ok?: boolean; reason?: string }) => {
@@ -266,19 +271,30 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     let lastRendered: string | null = null
     let fixTimer: ReturnType<typeof setTimeout> | null = null
+    let fixAttempts: { code: string; error: string }[] = [] // 本块的失败修复尝试（随请求发给 AI 避免重复）
 
     // mermaid 渲染失败 → 防抖上报 AI 自动修复（只修这一段代码块）；期间任何新渲染都会撤销旧上报
+    function sendFixRequest(badCode: string, errorMessage: string) {
+      void fetch('/api/mermaid-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: notePath, code: badCode, error: errorMessage, force: true, attempts: fixAttempts.slice(-3) }),
+      })
+        .then((r) => r.json())
+        .then((j: { ok?: boolean }) => {
+          if (j.ok) fixAttempts = [] // 修好了，清空历史
+        })
+        .catch(() => undefined)
+    }
     function scheduleAutoFix(badCode: string, errorMessage: string) {
       if (!notePath) return
       if (fixTimer) clearTimeout(fixTimer)
       fixTimer = setTimeout(() => {
         fixTimer = null
         if (autoFixBlocked?.()) return
-        void fetch('/api/mermaid-fix', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: notePath, code: badCode, error: errorMessage }),
-        }).catch(() => undefined)
+        fixAttempts.push({ code: badCode, error: errorMessage })
+        fixAttempts = fixAttempts.slice(-3)
+        sendFixRequest(badCode, errorMessage)
       }, 1500)
     }
 
@@ -308,6 +324,7 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
       const code = current.textContent
       lastRendered = code
       lastError = ''
+      fixAttempts = []
       // 新渲染开始：撤销尚未发出的修复上报（内容仍在变化中）
       if (fixTimer) {
         clearTimeout(fixTimer)
