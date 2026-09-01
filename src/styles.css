@@ -4209,3 +4209,119 @@ html[data-theme='dark'] .ps-ann.mask {
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* ── 资料引用角标与悬浮来源卡片 ────────────────────────────────────────── */
+/* 编辑器内：[^n] 原文隐藏，角标由 widget 装饰渲染 */
+.cite-mark {
+  display: none;
+}
+/* 角标（编辑器 widget 与 RichText sup 共用） */
+sup.cite-badge,
+sup[data-type='footnote_reference'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0 2px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mastered) 22%, transparent);
+  color: var(--mastered);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: super;
+  cursor: default;
+  transition: background 0.12s;
+  user-select: none;
+}
+sup.cite-badge:hover,
+sup[data-type='footnote_reference']:hover {
+  background: color-mix(in srgb, var(--mastered) 38%, transparent);
+}
+/* 悬浮来源卡片 */
+.cite-pop {
+  position: fixed;
+  z-index: 220;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  display: none;
+  pointer-events: auto;
+}
+.cite-pop.open {
+  display: block;
+  animation: citePop 0.14s ease-out;
+}
+@keyframes citePop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.cite-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cite-pop-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mastered) 25%, transparent);
+  color: var(--mastered);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.cite-pop-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cite-pop-quote {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cite-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.cite-pop-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cite-pop-type .material-symbols-rounded {
+  font-size: 15px;
+  color: var(--danger);
+}
+.cite-pop-group {
+  margin-left: auto;
+  color: var(--text-3);
+}

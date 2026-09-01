@@ -2,6 +2,7 @@
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
+import { parseCiteDefs } from '../cite'
 
 function escapeHtml(s: string) {
   return s
@@ -63,12 +64,31 @@ export interface RenderedMd {
   html: string
   hasMermaid: boolean
   hasRemoteDiagram: boolean
+  /** 脚注引用定义（[^n]: ...），供悬浮来源卡片查询 */
+  citeRefs: Map<number, import('../cite').CiteInfo>
 }
 
-/** markdown → 消毒后的 HTML；mermaid/d2/gnuplot 转占位 div 由调用方渲染；wikilink/callout 样式化 */
+/** markdown → 消毒后的 HTML；mermaid/d2/gnuplot 转占位 div 由调用方渲染；wikilink/callout/引用角标样式化 */
 export function renderRichMarkdown(text: string): RenderedMd {
-  const raw = marked.parse(text, { async: false }) as string
-  const html = DOMPurify.sanitize(raw, { ADD_ATTR: ['style'] })
+  // 引用脚注：提取 [^n]: 定义（代码围栏内不动），行内 [^n] 换成角标 sup
+  const citeRefs = parseCiteDefs(text)
+  const body = text
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      let p = part.replace(/^\[\^(\d{1,3})\]:\s*.+$/gm, '')
+      if (citeRefs.size) {
+        p = p.replace(/\[\^(\d{1,3})\]/g, (m2, num) => {
+          const n = parseInt(num, 10)
+          return citeRefs.has(n) ? `<sup class="cite-badge" data-ref="${n}">${n}</sup>` : m2
+        })
+      }
+      return p
+    })
+    .join('')
+
+  const raw = marked.parse(body, { async: false }) as string
+  const html = DOMPurify.sanitize(raw, { ADD_ATTR: ['style', 'data-ref'] })
   const withLinks = html.replace(
     /\[\[([^\[\]\n]{1,80})\]\]/g,
     (_m, title) => `<span class="wikilink">[[${title}]]</span>`,
@@ -81,6 +101,7 @@ export function renderRichMarkdown(text: string): RenderedMd {
     html: withCallouts,
     hasMermaid: withCallouts.includes('class="mermaid"'),
     hasRemoteDiagram: withCallouts.includes('remote-diagram'),
+    citeRefs,
   }
 }
 

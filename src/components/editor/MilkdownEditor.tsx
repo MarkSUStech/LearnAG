@@ -5,6 +5,7 @@ import { Plugin, PluginKey } from '@milkdown/kit/prose/state'
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view'
 import { replaceAll, $prose } from '@milkdown/kit/utils'
 import { codeBlockNodeView } from './mermaidNodeView'
+import { attachCiteHover, parseCiteDefs } from '../../cite'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 
@@ -26,6 +27,26 @@ const contentDecorations = $prose(
                   Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
                     class: 'wikilink',
                   }),
+                )
+              }
+              // 资料引用角标：[^n] 隐藏原文，替换为可悬停的编号徽章（文档文本不变）
+              const reCite = /\[\^(\d{1,3})\]/g
+              while ((m = reCite.exec(node.text))) {
+                const num = m[1]
+                const from = pos + m.index
+                decos.push(Decoration.inline(from, from + m[0].length, { class: 'cite-mark' }))
+                decos.push(
+                  Decoration.widget(
+                    from,
+                    () => {
+                      const sup = document.createElement('sup')
+                      sup.className = 'cite-badge'
+                      sup.dataset.ref = num
+                      sup.textContent = num
+                      return sup
+                    },
+                    { side: -1, key: 'cite-' + num + '-' + from },
+                  ),
                 )
               }
             }
@@ -88,6 +109,9 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
   autoFixBlockedRef.current = autoFixBlocked
   const lastPushed = useRef(value) // 最近一次由本组件上报的内容
   const applyingExternal = useRef(false)
+  const disposeCiteHover = useRef<(() => void) | null>(null)
+  const valueRef = useRef(value)
+  valueRef.current = value
 
   // 创建编辑器（一次）
   useEffect(() => {
@@ -152,6 +176,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
             const m = /^\[\[([^\[\]\n]+)\]\]$/.exec(wl.textContent ?? '')
             if (m?.[1]) onWikilinkRef.current?.(m[1].trim())
           })
+          // 引用角标悬浮来源卡片：从 value prop（原始 markdown）解析 [^n]: 定义
+          disposeCiteHover.current = attachCiteHover(host, (num) => parseCiteDefs(valueRef.current).get(num))
         }
       })
       .catch((e) => {
@@ -161,6 +187,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
 
     return () => {
       disposed = true
+      disposeCiteHover.current?.()
+      disposeCiteHover.current = null
       crepeRef.current = null
       void crepe.destroy().catch(() => undefined)
     }
