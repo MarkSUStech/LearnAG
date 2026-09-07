@@ -83,3 +83,24 @@ learn-agent/
 
 - 服务只绑定 `127.0.0.1`，所有文件操作限制在 vault 目录内
 - Agent 的工具调用受服务端 schema 校验（非法节点/边会被拒绝）
+
+## 进阶模块
+
+- **PDF 学习器**：vault 内 PDF（资料/、reference/papers/、附件/）以学习器标签页打开——连续滚动阅读、荧光/下划线/波浪线/删除线标注、遮挡自测、页面贴图、四用途卡片笔记（Milkdown 编辑）、标签系统、书签大纲精确跳转；标注存 `vault/.agent/pdf-study/`，与 Obsidian 完全兼容（PDF 文件零修改）
+- **选区翻译 & AI 重写**：划选 PDF 文字一键翻译成卡片；mermaid 图渲染失败时自动/手动（AI 重写按钮）让 AI 只修坏掉的那一段代码块
+- **本地 RAG 检索**：transformers.js(ONNX) 本地 embedding（默认 jina-embeddings-v2-base-zh 中英双语，可在设置切换 bge-m3 等），纯文件向量库零原生依赖；索引覆盖全部笔记 + PDF 文本 + 学习器标注/卡片，主 agent 与笔记答疑助手共享 `search_knowledge` 工具
+- **写笔记 agent**：指定笔记 / PDF（含你的标注与卡片，支持按章节/页码限定范围）撰写笔记，未指定范围时经 RAG 自行定位，避免全文读入
+- **笔记答疑助手**：笔记/PDF 右上角论坛图标唤起右侧面板，苏格拉底 / 费曼 / 快讲三种角色针对当前内容答疑；PDF 按当前阅读章节注入上下文
+- **资料引用角标**：AI 生成内容中的 `[^n]` 脚注渲染为可悬停的来源卡片（来源标题/摘录/类型/分组），语法与 Obsidian 脚注兼容
+
+## 目录结构（节选）
+
+```
+learn-agent/
+├─ server/
+│  ├─ pdfdoc.js / pdfstudy.js / pdfcontext.js   # PDF 解析/标注存储/上下文编码
+│  ├─ rag.js                                     # 本地 embedding + 向量检索
+│  └─ agent/                                     # 主 agent / tutor / 写作 / mermaid 修复
+└─ src/
+   └─ components/pdfstudy/                       # PDF 学习器前端
+```
