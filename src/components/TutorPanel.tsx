@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import RichText from './RichText'
 import { api } from '../api'
 import { TUTOR_ROLES, type TutorRole } from '../tutorRoles'
+import PromptDialog from './PromptDialog'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -25,6 +26,7 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
   const [input, setInput] = useState('')
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   // PDF 文档答疑：记录阅读器上报的当前页（服务端据此定位当前章节）
@@ -127,7 +129,6 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
   }
 
   async function clearThread() {
-    if (!confirm('清空与该笔记的答疑对话？')) return
     await api.tutorClear(notePath).catch(() => undefined)
     setMessages([])
   }
@@ -140,7 +141,7 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
         <span className="tutor-title" title={notePath}>
           {noteTitle}
         </span>
-        <button className="icon-btn" title="清空对话" onClick={() => void clearThread()}>
+        <button className="icon-btn" title="清空对话" onClick={() => setConfirmClear(true)}>
           <span className="material-symbols-rounded" style={{ fontSize: 16 }}>
             mopup
           </span>
@@ -243,6 +244,12 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
           <span className="material-symbols-rounded">{running ? 'stop' : 'send'}</span>
         </button>
       </div>
+      {confirmClear && (
+        <PromptDialog
+          spec={{ kind: 'confirm', title: '清空与该笔记的答疑对话？', okText: '清空', danger: true, onOk: () => void clearThread() }}
+          onClose={() => setConfirmClear(false)}
+        />
+      )}
     </div>
   )
 }

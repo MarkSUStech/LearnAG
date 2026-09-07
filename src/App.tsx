@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import './styles.css'
+import { useEffect, useRef, useState, Suspense, lazy } from 'react'
+import './styles/index.css'
 import { api } from './api'
 import { useSSE } from './sse'
 import { splitFrontmatter } from './frontmatter'
@@ -13,9 +13,12 @@ import QuickSwitcher from './components/QuickSwitcher'
 import ReferenceBrowser from './components/ReferenceBrowser'
 import Toasts from './components/Toasts'
 import TutorPanel from './components/TutorPanel'
+import PromptDialog, { type DialogSpec } from './components/PromptDialog'
 import PdfStudyPane from './components/pdfstudy/PdfStudyPane'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
 import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode, WriterAttachment } from './types'
+
+const IdeShell = lazy(() => import('./components/ide/IdeShell'))
 
 /** 展开文件树为路径列表 */
 function flattenFiles(nodes: TreeNode[], out: string[] = []): string[] {
@@ -43,6 +46,10 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [dark, setDark] = useState(() => localStorage.getItem('la-theme') === 'dark')
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('la-mode') as Mode) || '教学')
+  // 应用级视图：学习模式 / IDE 模式（IDE 借鉴 Theia ApplicationShell 布局，见 components/ide/）
+  const [appView, setAppView] = useState<'learn' | 'ide'>(() =>
+    localStorage.getItem('la-app-view') === 'ide' ? 'ide' : 'learn',
+  )
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
   const [sessions, setSessions] = useState<SessionMeta[]>([])
@@ -51,6 +58,7 @@ export default function App() {
   const [appearance, setAppearance] = useState<Appearance>(() => loadAppearance())
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null)
   const [learnedFlow, setLearnedFlow] = useState<string | null>(null) // 正在检查掌握情况的笔记路径
+  const [dialog, setDialog] = useState<DialogSpec | null>(null)
   const [celebratePath, setCelebratePath] = useState<string | null>(null)
   const [tutorFor, setTutorFor] = useState<string | null>(null) // 答疑面板绑定的笔记路径
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -108,6 +116,8 @@ export default function App() {
   const lastSentRef = useRef<Record<string, string>>({})
   const activeIdxRef = useRef(activeIdx)
   activeIdxRef.current = activeIdx
+  const appViewRef = useRef(appView)
+  appViewRef.current = appView
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
@@ -122,6 +132,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('la-mode', mode)
   }, [mode])
+
+  useEffect(() => {
+    localStorage.setItem('la-app-view', appView)
+  }, [appView])
 
   function toast(text: string, error = false) {
     const id = Math.random()
@@ -234,6 +248,7 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (appViewRef.current === 'ide') return // IDE 模式由 IdeShell 自管快捷键
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         flushSaves()
@@ -325,9 +340,7 @@ export default function App() {
   }, [activeDocPath])
 
   // ── 新建 / 删除 / 改名 ──────────────────────────────────────────────────
-  async function createEntry(_parent: string | null, kind: 'file' | 'folder') {
-    const name = prompt(kind === 'file' ? '新笔记名称：' : '新文件夹名称：')
-    if (!name) return
+  async function createEntry(_parent: string | null, kind: 'file' | 'folder', name: string) {
     const p = kind === 'file' && !name.endsWith('.md') ? name + '.md' : name
     try {
       await api.createEntry(p, kind)
@@ -339,7 +352,6 @@ export default function App() {
   }
 
   async function deleteEntry(path: string) {
-    if (!confirm(`确定删除「${path}」？`)) return
     try {
       await api.deleteEntry(path)
       setTabs((ts) => ts.filter((t) => !(t.kind === 'note' && (t.path === path || t.path.startsWith(path + '/')))))
@@ -447,7 +459,6 @@ export default function App() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm('删除这个对话？（记录会归档保存）')) return
     try {
       await api.deleteSession(id)
       refreshSessions()
@@ -587,6 +598,15 @@ export default function App() {
 
   const vaultName = vaultPath ? vaultPath.replace(/\\/g, '/').split('/').pop() || vaultPath : ''
 
+  // IDE 模式：整个界面切换为 IDE 壳（代码编辑 / md 分屏 / PDF 阅读），与学习模式互斥
+  if (appView === 'ide') {
+    return (
+      <Suspense fallback={<div className="ide-boot">IDE 加载中…</div>}>
+        <IdeShell dark={dark} onToggleTheme={() => setDark((d) => !d)} onExit={() => setAppView('learn')} />
+      </Suspense>
+    )
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -599,8 +619,10 @@ export default function App() {
         onCreate={createEntry}
         onDelete={deleteEntry}
         onRename={renameEntry}
+        onOpenDialog={setDialog}
         onOpenGraph={openGraph}
         onOpenRefs={openRefs}
+        onOpenIde={() => setAppView('ide')}
         onOpenSettings={() => setSettingsOpen(true)}
         onToggleTheme={() => setDark((d) => !d)}
         dark={dark}
@@ -618,7 +640,7 @@ export default function App() {
         onOpenSwitcher={() => setSwitcherOpen(true)}
         agentRunning={agent.running}
       />
-      <div className="main" style={{ ['--tutor-w' as string]: `${tutorWidth}px` }}>
+      <div className="app-main" style={{ ['--tutor-w' as string]: `${tutorWidth}px` }}>
         <div className="tabbar">
           <button
             className="icon-btn"
@@ -798,6 +820,7 @@ export default function App() {
           }}
         />
       )}
+      {dialog && <PromptDialog spec={dialog} onClose={() => setDialog(null)} />}
       <Toasts items={toasts} />
     </div>
   )

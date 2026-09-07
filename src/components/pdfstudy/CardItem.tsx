@@ -5,10 +5,12 @@ import RichText from '../RichText'
 import { purposeOf } from './types'
 import type { Card } from './types'
 import TagChips from './TagChips'
+import PromptDialog from '../PromptDialog'
 
 export default function CardItem({ card, top }: { card: Card; top: number }) {
   const s = useStore()
   const [dragging, setDragging] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const purpose = purposeOf(card.purpose)
   const anchor = card.anchor
   const anchorAnn = anchor.kind === 'annotation' ? s.annotations.find((a) => a.id === anchor.annotationId) : undefined
@@ -36,6 +38,7 @@ export default function CardItem({ card, top }: { card: Card; top: number }) {
   }
 
   return (
+    <>
     <article
       className={`ps-card-item p-${card.purpose}${dragging ? ' dragging' : ''}${flashing ? ' flashing' : ''}`}
       style={{ top, ['--card-color' as never]: purpose.color }}
@@ -65,7 +68,7 @@ export default function CardItem({ card, top }: { card: Card; top: number }) {
             className="icon-btn danger"
             title="删除卡片"
             onClick={() => {
-              if (confirm('删除这张卡片？')) s.deleteCard(card.id)
+              setConfirmOpen(true)
             }}
           >
             <span className="material-symbols-rounded">delete</span>
@@ -96,5 +99,12 @@ export default function CardItem({ card, top }: { card: Card; top: number }) {
         </span>
       </footer>
     </article>
+    {confirmOpen && (
+      <PromptDialog
+        spec={{ kind: 'confirm', title: '删除这张卡片？', okText: '删除', danger: true, onOk: () => s.deleteCard(card.id) }}
+        onClose={() => setConfirmOpen(false)}
+      />
+    )}
+    </>
   )
 }

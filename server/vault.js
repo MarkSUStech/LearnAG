@@ -29,7 +29,34 @@ export function resolveInVault(relPath) {
 
 const IGNORED_DIRS = new Set(['.obsidian', '.agent', '.git', '.trash', 'node_modules', '.learn-agent'])
 
-function buildTree(absDir, relDir = '') {
+/** IDE 模式关注的文本/代码扩展名：文件树 all 模式、watcher、全局搜索共用 */
+export const TEXT_EXTS = new Set([
+  // 文本与标记
+  '.md', '.markdown', '.txt', '.json', '.jsonc', '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.xml', '.svg',
+  '.html', '.htm', '.css', '.scss', '.less',
+  // 脚本与语言
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx',
+  '.py', '.pyi', '.rb', '.php', '.pl', '.lua',
+  '.java', '.kt', '.kts', '.scala', '.groovy',
+  '.c', '.h', '.cpp', '.hpp', '.cc', '.hh', '.cs',
+  '.go', '.rs', '.swift', '.m', '.dart', '.vue', '.svelte',
+  '.sh', '.bash', '.zsh', '.bat', '.cmd', '.ps1',
+  '.sql', '.r', '.ipynb', '.properties', '.gradle', '.proto',
+])
+
+/** 无扩展名但属文本的常见文件名 */
+const TEXT_BASENAMES = new Set(['.gitignore', '.gitattributes', '.env', 'dockerfile', 'makefile', 'license', 'readme'])
+
+/** 是否为可按文本读写的文件（IDE 编辑器/监听/搜索的判定基准） */
+export function isTextFile(name) {
+  const base = name.toLowerCase()
+  if (TEXT_BASENAMES.has(base)) return true
+  const i = name.lastIndexOf('.')
+  if (i <= 0) return false
+  return TEXT_EXTS.has(name.slice(i).toLowerCase())
+}
+
+function buildTree(absDir, relDir = '', all = false) {
   const out = []
   let entries = []
   try {
@@ -39,8 +66,7 @@ function buildTree(absDir, relDir = '') {
   }
   // 资料/（旧版）、附件/（上传目录）与 reference/（新版）目录下展示全部文件类型（PDF/图片等）
   const segs = relDir.split('/')
-  const includeAll =
-    segs[0] === '资料' || segs[0] === '附件' || segs.includes('reference') || segs.includes('papers') || segs.includes('web')
+  const includeAll = all || segs[0] === '资料' || segs[0] === '附件' || segs.includes('reference') || segs.includes('papers') || segs.includes('web')
   for (const ent of entries) {
     if (ent.name.startsWith('.') && IGNORED_DIRS.has(ent.name)) continue
     const rel = relDir ? relDir + '/' + ent.name : ent.name
@@ -49,7 +75,7 @@ function buildTree(absDir, relDir = '') {
         name: ent.name,
         path: rel,
         type: 'folder',
-        children: buildTree(path.join(absDir, ent.name), rel),
+        children: buildTree(path.join(absDir, ent.name), rel, all),
       })
     } else if (ent.isFile() && (includeAll || ent.name.toLowerCase().endsWith('.md'))) {
       out.push({ name: ent.name, path: rel, type: 'file' })
@@ -62,8 +88,9 @@ function buildTree(absDir, relDir = '') {
   return out
 }
 
-export function getTree() {
-  return buildTree(vaultRoot)
+/** getTree({ all: true }) 返回全部文件类型（IDE 资源管理器），默认仅 md（学习模式文件树） */
+export function getTree({ all = false } = {}) {
+  return buildTree(vaultRoot, '', all)
 }
 
 export function listAllNotes() {
@@ -90,6 +117,59 @@ export function listAllFiles(extensions) {
   }
   walk(vaultRoot, '')
   return out
+}
+
+// ── IDE 全文搜索 ────────────────────────────────────────────────────────────
+
+const SEARCH_MAX_FILE = 2 * 1024 * 1024 // 超过 2MB 的文本文件跳过，避免卡顿
+
+/** 跨文本/代码文件按行搜索，返回 [{ path, line, column, text }] */
+export function searchText(query, { limit = 200, maxLine = 240, caseSensitive = false } = {}) {
+  const q = String(query ?? '')
+  if (!q.trim()) return { results: [], truncated: false }
+  const needle = caseSensitive ? q : q.toLowerCase()
+  const results = []
+  let truncated = false
+  function walk(dir, rel) {
+    if (truncated) return
+    let entries = []
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const ent of entries) {
+      if (truncated) return
+      if (ent.isDirectory()) {
+        if (IGNORED_DIRS.has(ent.name)) continue
+        walk(path.join(dir, ent.name), rel ? rel + '/' + ent.name : ent.name)
+        continue
+      }
+      if (!ent.isFile() || !isTextFile(ent.name)) continue
+      const relPath = rel ? rel + '/' + ent.name : ent.name
+      let text = ''
+      try {
+        const abs = path.join(dir, ent.name)
+        if (fs.statSync(abs).size > SEARCH_MAX_FILE) continue
+        text = fs.readFileSync(abs, 'utf8')
+      } catch {
+        continue
+      }
+      const lines = text.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        const hay = caseSensitive ? lines[i] : lines[i].toLowerCase()
+        const col = hay.indexOf(needle)
+        if (col === -1) continue
+        results.push({ path: relPath, line: i + 1, column: col + 1, text: lines[i].trim().slice(0, maxLine) })
+        if (results.length >= limit) {
+          truncated = true
+          return
+        }
+      }
+    }
+  }
+  walk(vaultRoot, '')
+  return { results, truncated }
 }
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
@@ -159,11 +239,11 @@ function startWatcher() {
       if (!rel) return false
       const first = rel.split(path.sep)[0]
       if (IGNORED_DIRS.has(first)) return true
-      // 目录不能剪枝，否则递归监听失效（只关心 md、pdf 与 知识图谱.json）
+      // 目录不能剪枝，否则递归监听失效（关心 md、pdf、代码/文本文件与 知识图谱.json）
       if (stats ? stats.isDirectory() : fs.existsSync(p) && fs.statSync(p).isDirectory()) return false
       return (
-        !rel.endsWith('.md') &&
         !rel.toLowerCase().endsWith('.pdf') &&
+        !isTextFile(path.basename(rel)) &&
         path.basename(rel) !== '知识图谱.json'
       )
     },

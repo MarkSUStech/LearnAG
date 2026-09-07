@@ -1,0 +1,921 @@
+/* ── IDE 模式 ───────────────────────────────────────────────────────────
+   布局借鉴 Eclipse Theia 的 ApplicationShell：活动栏 / 侧面板 / 主区 / 状态栏。
+   .ide-shell 内重映射全局设计变量（--panel 等），复用的学习模式组件
+   （QuickSwitcher、Toast、Milkdown 预览、ps- PDF 类）自动获得 IDE 配色。 */
+
+.ide-shell {
+  /* VSCode Dark Modern 配色 */
+  --bg: #1f1f1f;
+  --panel: #181818;
+  --panel-2: #202020;
+  --border: #2b2b2b;
+  --text: #cccccc;
+  --text-2: #9d9d9d;
+  --text-3: #6e7681;
+  --accent: #0078d4;
+  --accent-weak: #04395e;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --radius: 6px;
+
+  display: grid;
+  grid-template-columns: 48px auto 6px 1fr;
+  grid-template-rows: minmax(0, 1fr); /* 关键：约束行高，防止长文件树把整壳撑出视口 */
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.ide-shell[data-theme='light'] {
+  /* VSCode Light Modern 配色 */
+  --bg: #ffffff;
+  --panel: #f8f8f8;
+  --panel-2: #f0f1f2;
+  --border: #e0e0e0;
+  --text: #1f1f1f;
+  --text-2: #616161;
+  --text-3: #919191;
+  --accent: #005fb8;
+  --accent-weak: #d6ebff;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+/* ── 活动栏 ───────────────────────────────────────────────────────────── */
+.ide-activitybar {
+  grid-column: 1;
+  width: 48px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  z-index: 30;
+}
+.ide-act-btn {
+  position: relative;
+  width: 48px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  transition: color 0.12s;
+}
+.ide-act-btn .material-symbols-rounded {
+  font-size: 24px;
+}
+.ide-act-btn:hover {
+  color: var(--text);
+}
+.ide-act-btn.active {
+  color: var(--text);
+}
+.ide-act-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent);
+}
+.ide-act-spacer {
+  flex: 1;
+}
+
+/* ── 侧面板（资源管理器 / 搜索） ──────────────────────────────────────── */
+.ide-sidepanel {
+  grid-column: 2;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0; /* 网格子项必须收紧，内部滚动才生效 */
+}
+.ide-side-title {
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  color: var(--text-2);
+  padding: 10px 14px 6px;
+  user-select: none;
+  flex: none;
+}
+.ide-side-resize {
+  grid-column: 3;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 25;
+  position: relative;
+}
+.ide-side-resize:hover,
+.ide-side-resize:active {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* 资源管理器文件树 */
+.ide-explorer {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 2px 6px 20px;
+}
+.ide-explorer-empty {
+  color: var(--text-3);
+  padding: 12px;
+  font-size: 12.5px;
+}
+.ide-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding-right: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  font-size: 13px;
+  user-select: none;
+}
+.ide-tree-item:hover {
+  background: var(--panel-2);
+}
+.ide-tree-item.active {
+  background: var(--accent-weak);
+}
+.ide-tree-item .ide-caret {
+  font-size: 16px;
+  color: var(--text-2);
+  transition: transform 0.1s;
+  flex: none;
+}
+.ide-tree-item .ide-caret.open {
+  transform: rotate(90deg);
+}
+.ide-tree-indent {
+  width: 16px;
+  flex: none;
+}
+.ide-tree-icon {
+  font-size: 16px;
+  flex: none;
+  color: var(--text-2);
+}
+.ide-tree-icon.folder {
+  color: #dcb67a;
+}
+.ide-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右键菜单 */
+.ide-menu {
+  position: fixed;
+  z-index: 500;
+  min-width: 168px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.ide-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+.ide-menu button .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--text-2);
+}
+.ide-menu button:hover {
+  background: var(--panel-2);
+}
+.ide-menu button.danger,
+.ide-menu button.danger .material-symbols-rounded {
+  color: var(--danger);
+}
+
+/* ── 搜索面板 ─────────────────────────────────────────────────────────── */
+.ide-search {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ide-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ide-search-box:focus-within {
+  border-color: var(--accent);
+}
+.ide-search-box .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--text-3);
+  flex: none;
+}
+.ide-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+.ide-search-spin {
+  animation: ide-spin 1s linear infinite;
+  font-size: 14px !important;
+  color: var(--accent) !important;
+}
+@keyframes ide-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ide-search-meta {
+  padding: 0 12px 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.ide-search-results {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding-bottom: 20px;
+}
+.ide-search-group {
+  margin-bottom: 6px;
+}
+.ide-search-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.ide-search-file:hover {
+  background: var(--panel-2);
+}
+.ide-search-file .name {
+  font-weight: 600;
+  flex: none;
+}
+.ide-search-file .path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ide-search-file .count {
+  flex: none;
+  min-width: 18px;
+  text-align: center;
+  font-size: 10.5px;
+  background: var(--panel-2);
+  border-radius: 9px;
+  padding: 1px 5px;
+  color: var(--text-2);
+}
+.ide-search-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 10px 2px 30px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.ide-search-row:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.ide-search-row .line {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  color: var(--text-3);
+}
+.ide-search-row .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 主区：标签栏 ─────────────────────────────────────────────────────── */
+.ide-main {
+  grid-column: 4;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: var(--bg);
+}
+/* 侧面板收起：列宽归零（子元素未渲染，主区占满） */
+.ide-shell.no-side {
+  grid-template-columns: 48px 0 0 1fr;
+}
+.ide-tabbar {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  height: 36px;
+  flex: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.ide-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  min-width: 120px;
+  max-width: 220px;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 13px;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.ide-tab:hover {
+  background: var(--panel-2);
+}
+.ide-tab.active {
+  background: var(--bg);
+  color: var(--text);
+}
+.ide-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: var(--accent);
+}
+.ide-tab-icon {
+  font-size: 16px;
+  flex: none;
+}
+.ide-tab-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ide-tab-dirty {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-2);
+}
+.ide-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  visibility: hidden;
+  flex: none;
+}
+.ide-tab:hover .ide-tab-close,
+.ide-tab.active .ide-tab-close {
+  visibility: visible;
+}
+.ide-tab-close:hover {
+  background: color-mix(in srgb, var(--text) 15%, transparent);
+}
+.ide-tab-close .material-symbols-rounded {
+  font-size: 14px;
+}
+.ide-tabbar-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  flex: none;
+}
+.ide-tabbar-end .icon-btn {
+  width: 30px;
+  height: 28px;
+}
+
+/* ── 主区：编辑器 ─────────────────────────────────────────────────────── */
+.ide-editor-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg);
+}
+.ide-editor-area > * {
+  flex: 1;
+  min-height: 0;
+}
+.ide-monaco-host {
+  flex: 1;
+  min-height: 0;
+}
+.ide-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  gap: 8px;
+}
+.ide-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-3);
+}
+.ide-empty .material-symbols-rounded {
+  font-size: 40px;
+  color: var(--border);
+}
+
+/* 欢迎页 */
+.ide-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--text-2);
+}
+.ide-welcome-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 300;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+.ide-welcome-logo .material-symbols-rounded {
+  font-size: 34px;
+  color: var(--accent);
+}
+.ide-welcome-hint {
+  font-size: 13px;
+}
+.ide-welcome-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.ide-welcome-keys kbd {
+  display: inline-block;
+  min-width: 20px;
+  text-align: center;
+  padding: 1px 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+/* ── Markdown 分屏 ────────────────────────────────────────────────────── */
+.ide-md {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.ide-md-source {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ide-md.split .ide-md-source {
+  flex: none;
+}
+.ide-md-splitter {
+  flex: none;
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.12s;
+}
+.ide-md-splitter:hover,
+.ide-md-splitter:active {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.ide-md-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 26px 80px;
+}
+.ide-md-preview .milkdown-editor-host {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* ── Markdown 浮动预览窗 ──────────────────────────────────────────────── */
+.ide-float-preview {
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.ide-float-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  user-select: none;
+  flex: none;
+}
+.ide-float-head > .material-symbols-rounded {
+  font-size: 15px;
+  color: var(--accent);
+}
+.ide-float-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.ide-float-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--text-2);
+}
+.ide-float-btn:hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+.ide-float-btn .material-symbols-rounded {
+  font-size: 15px;
+}
+.ide-float-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 20px 50px;
+}
+.ide-float-body .milkdown-editor-host {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.ide-float-resize {
+  position: absolute;
+  z-index: 2;
+}
+.ide-float-resize.left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+.ide-float-resize.bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+.ide-float-resize.corner {
+  left: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+/* ── 图片预览 ─────────────────────────────────────────────────────────── */
+.ide-image-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  overflow: auto;
+}
+.ide-image-view img {
+  max-width: 100%;
+  max-height: calc(100% - 40px);
+  object-fit: contain;
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+}
+.ide-image-name {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ── 状态栏 ───────────────────────────────────────────────────────────── */
+.ide-statusbar {
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+  user-select: none;
+  z-index: 20;
+}
+.ide-status-left,
+.ide-status-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.ide-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 9px;
+  height: 100%;
+}
+.ide-status-item:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+.ide-status-item.accent {
+  color: var(--learning);
+}
+.ide-status-item.lsp-indicator {
+  color: var(--text-3);
+}
+.ide-status-item.lsp-indicator.on {
+  color: var(--mastered);
+}
+
+/* ── LSP 插件面板 ─────────────────────────────────────────────────────── */
+.lsp-panel {
+  position: absolute;
+  right: 10px;
+  bottom: 30px;
+  width: 340px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 60;
+  overflow: hidden;
+}
+.lsp-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.lsp-panel-head .material-symbols-rounded {
+  font-size: 15px;
+  color: var(--accent);
+}
+.lsp-panel-head .icon-btn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+}
+.lsp-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+.lsp-plugin-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.lsp-plugin-row:hover {
+  background: var(--panel-2);
+}
+.lsp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 5px;
+}
+.lsp-dot.on {
+  background: var(--mastered);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mastered) 18%, transparent);
+}
+.lsp-dot.idle {
+  background: var(--text-3);
+}
+.lsp-dot.off {
+  background: var(--danger);
+  opacity: 0.6;
+}
+.lsp-plugin-info {
+  flex: 1;
+  min-width: 0;
+}
+.lsp-plugin-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.lsp-plugin-langs {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.lsp-plugin-hint {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-top: 1px;
+}
+.lsp-panel-foot {
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.lsp-panel-section {
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  padding: 8px 8px 2px;
+  user-select: none;
+}
+.lsp-install-btn {
+  flex: none;
+  align-self: center;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--mastered) 45%, transparent);
+  color: var(--mastered);
+}
+.lsp-install-btn:hover {
+  background: color-mix(in srgb, var(--mastered) 12%, transparent);
+}
+
+/* ── 运行输出面板 ─────────────────────────────────────────────────────── */
+.run-panel {
+  flex: none;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.run-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.run-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+.run-dot.on {
+  background: var(--mastered);
+  animation: run-blink 1s ease-in-out infinite;
+}
+@keyframes run-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.run-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+.run-panel-head .btn {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}
+.run-panel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--text-2);
+}
+.run-panel-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.run-panel-btn .material-symbols-rounded {
+  font-size: 15px;
+}
+.run-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+/* ── IDE 启动过渡（React.lazy Suspense 回退） ─────────────────────────── */
+.ide-boot {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1f1f1f;
+  color: #9d9d9d;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+/* ── IDE 内复用组件的微调 ─────────────────────────────────────────────── */
+/* QuickSwitcher / Toast 借用全局变量，此处只调观感细节 */
+.ide-shell .modal {
+  border-radius: 8px;
+}
+.ide-shell .switcher-item .s-name {
+  color: var(--text);
+}

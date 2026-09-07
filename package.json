@@ -28,10 +28,13 @@
     "marked": "^18.0.11",
     "material-symbols": "^0.28.2",
     "mermaid": "^11.17.2",
+    "monaco-editor": "^0.56.0",
     "pdfjs-dist": "^4.10.38",
+    "pyright": "^1.1.413",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/d3-drag": "^3.0.7",

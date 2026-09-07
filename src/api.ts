@@ -13,6 +13,21 @@ export interface UploadPreview {
   totalChars: number
 }
 
+export interface IdeSearchResult {
+  path: string
+  line: number
+  column: number
+  text: string
+}
+
+export interface LspPluginInfo {
+  id: string
+  name: string
+  languages: string[]
+  available: boolean
+  installHint: string
+}
+
 export const api = {
   getSettings: () => http<Settings>('/api/settings'),
   saveSettings: (patch: Partial<Record<'vaultPath' | 'apiBaseURL' | 'apiKey' | 'model' | 'ragModel', string>>) =>
@@ -23,6 +38,14 @@ export const api = {
     }),
   testConnection: () => http<{ ok: boolean; reply: string }>('/api/settings/test', { method: 'POST' }),
   getTree: () => http<{ tree: TreeNode[]; vaultPath: string }>('/api/tree'),
+  /** 全部文件类型文件树（IDE 资源管理器） */
+  getTreeAll: () => http<{ tree: TreeNode[]; vaultPath: string }>('/api/tree?all=1'),
+  /** IDE 全文搜索 */
+  ideSearch: (q: string) =>
+    http<{ results: IdeSearchResult[]; truncated: boolean }>(`/api/ide/search?q=${encodeURIComponent(q)}`),
+  /** IDE 语言服务器插件清单（含本机可用性） */
+  lspPlugins: () =>
+    http<{ plugins: LspPluginInfo[] }>(`/api/lsp/plugins?_=${Date.now()}`),
   getFile: (path: string) =>
     http<{ path: string; content: string }>(`/api/file?path=${encodeURIComponent(path)}`),
   saveFile: (path: string, content: string) =>

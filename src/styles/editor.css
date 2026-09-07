@@ -1,0 +1,660 @@
+/* ── 编辑区 ───────────────────────────────────────────────────────────── */
+.editor-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.fm-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.chip {
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.chip.status-mastered {
+  color: var(--mastered);
+  border-color: color-mix(in srgb, var(--mastered) 40%, transparent);
+  background: color-mix(in srgb, var(--mastered) 10%, transparent);
+}
+.chip.status-learning {
+  color: var(--learning);
+  border-color: color-mix(in srgb, var(--learning) 40%, transparent);
+  background: color-mix(in srgb, var(--learning) 10%, transparent);
+}
+.chip.mastery {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.fm-banner .spacer {
+  flex: 1;
+}
+.conflict-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  background: color-mix(in srgb, var(--learning) 12%, var(--panel));
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.conflict-tip button {
+  color: var(--accent);
+  font-size: 12.5px;
+}
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.editor-content-col {
+  width: 100%;
+  max-width: var(--editor-max-width, 860px);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  flex-shrink: 0; /* 防止 flex 压缩盒高导致底部留白失效 */
+  /* 底部留白：悬空输入区全高（状态行+计划芯片+输入框）+安全余量，保证笔记末尾（含已学习按钮）完整可见 */
+  padding-bottom: 190px;
+}
+.editor-body > * {
+  max-width: 100%;
+}
+/* 笔记末尾的「已学习」按钮：跟随笔记内容滚动 */
+.note-learned {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 26px 0 42px;
+}
+/* 编辑器字号 / 字体（外观设置） */
+.milkdown-editor-host .milkdown {
+  --crepe-base-font-size: var(--editor-font-size, 16px);
+  --crepe-font-default: var(--editor-font-family, 'Noto Sans', Arial, Helvetica, sans-serif);
+  --crepe-font-title: var(--editor-font-title, 'Noto Serif', Cambria, 'Times New Roman', Times, serif);
+}
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-3);
+}
+.empty-state .material-symbols-rounded {
+  font-size: 44px;
+  color: var(--border);
+}
+
+/* ── Milkdown 容器微调 ────────────────────────────────────────────────── */
+.milkdown-editor-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.milkdown-editor-host .milkdown {
+  background: transparent;
+  outline: none;
+  padding: 8px 0;
+}
+.milkdown-editor-host .ProseMirror {
+  outline: none;
+}
+/* Callout 引用块（> 💡 / ⚠️ / 📌）——教材笔记的视觉锚点 */
+.milkdown-editor-host .milkdown blockquote {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  border-radius: 0 10px 10px 0;
+  padding: 10px 16px;
+  margin: 16px 0;
+}
+.milkdown-editor-host .milkdown blockquote p:first-of-type {
+  margin-top: 0;
+}
+.milkdown-editor-host .milkdown blockquote p:last-of-type {
+  margin-bottom: 0;
+}
+.milkdown-editor-host .milkdown blockquote:has(> p:first-of-type > img) {
+  background: var(--panel);
+}
+.milkdown-editor-host .milkdown h1 {
+  letter-spacing: 0.3px;
+}
+.milkdown-editor-host .milkdown h2 {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+/* [[wikilink]] 双链样式 */
+.milkdown-editor-host .milkdown .wikilink {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 5px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+.milkdown-editor-host .milkdown .wikilink:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* ── Obsidian 风格 Callout（> [!type] 标题）────────────────────────────── */
+/* 类型 → 颜色 + 图标（Material Symbols 连字） */
+.milkdown-editor-host .milkdown blockquote.callout {
+  --callout-color: #3b82f6;
+  --callout-icon: 'edit_note';
+  caret-color: #58a6ff;
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 7%, var(--panel));
+  border-radius: 0 10px 10px 0;
+  padding: 10px 16px 10px 14px;
+  margin: 16px 0;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:first-of-type {
+  margin-top: 0;
+  font-weight: 600;
+  color: var(--callout-color);
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:first-of-type::before {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  content: var(--callout-icon);
+  margin-right: 6px;
+  font-size: 1.15em;
+  vertical-align: -0.18em;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:last-of-type {
+  margin-bottom: 0;
+}
+.milkdown-editor-host .milkdown blockquote.callout > p:not(:first-of-type) {
+  color: var(--text);
+  font-weight: normal;
+}
+/* [!type] 标记：完全隐藏但保持光标可渲染（font-size:0 而非 display:none） */
+.milkdown-editor-host .milkdown .callout-marker {
+  font-size: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  letter-spacing: normal;
+}
+.milkdown-editor-host .milkdown blockquote.callout {
+  caret-color: #58a6ff;
+}
+/* 各类型配色 */
+.milkdown-editor-host .milkdown blockquote.callout-abstract {
+  --callout-color: #3b82f6;
+  --callout-icon: 'summarize';
+}
+.milkdown-editor-host .milkdown blockquote.callout-info {
+  --callout-color: #0ea5e9;
+  --callout-icon: 'info';
+}
+.milkdown-editor-host .milkdown blockquote.callout-note {
+  --callout-color: #3b82f6;
+  --callout-icon: 'edit_note';
+}
+.milkdown-editor-host .milkdown blockquote.callout-tip,
+.milkdown-editor-host .milkdown blockquote.callout-success,
+.milkdown-editor-host .milkdown blockquote.callout-check {
+  --callout-color: #10b981;
+  --callout-icon: 'lightbulb';
+}
+.milkdown-editor-host .milkdown blockquote.callout-important {
+  --callout-color: #8b5cf6;
+  --callout-icon: 'local_fire_department';
+}
+.milkdown-editor-host .milkdown blockquote.callout-warning,
+.milkdown-editor-host .milkdown blockquote.callout-caution {
+  --callout-color: #f59e0b;
+  --callout-icon: 'warning';
+}
+.milkdown-editor-host .milkdown blockquote.callout-danger,
+.milkdown-editor-host .milkdown blockquote.callout-error {
+  --callout-color: #ef4444;
+  --callout-icon: 'dangerous';
+}
+.milkdown-editor-host .milkdown blockquote.callout-example {
+  --callout-color: #a855f7;
+  --callout-icon: 'science';
+}
+.milkdown-editor-host .milkdown blockquote.callout-quote,
+.milkdown-editor-host .milkdown blockquote.callout-cite {
+  --callout-color: #9ca3af;
+  --callout-icon: 'format_quote';
+}
+/* 提问卡片内的 callout */
+.q-text.md .callout {
+  border-left: 3px solid var(--callout-color, #3b82f6);
+  background: color-mix(in srgb, var(--callout-color, #3b82f6) 7%, transparent);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 12px;
+  margin: 6px 0;
+}
+/* 表格：清晰边框 + 表头底色 + 斑马纹（覆盖 Crepe 默认的近透明边框；同时覆盖 GFM 管道表与编辑器新建表） */
+.milkdown-editor-host .milkdown .tableWrapper {
+  overflow-x: auto;
+  margin: 14px 0;
+}
+.milkdown-editor-host .milkdown table,
+.milkdown-editor-host .milkdown table.milkdown-table-block {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0;
+  font-size: 0.95em;
+}
+.milkdown-editor-host .milkdown table th,
+.milkdown-editor-host .milkdown table td,
+.milkdown-editor-host .milkdown table.milkdown-table-block th,
+.milkdown-editor-host .milkdown table.milkdown-table-block td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.milkdown-editor-host .milkdown table th,
+.milkdown-editor-host .milkdown table.milkdown-table-block th {
+  background: var(--panel-2);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.milkdown-editor-host .milkdown table tbody tr:nth-child(even) td,
+.milkdown-editor-host .milkdown table.milkdown-table-block tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+}
+.milkdown-editor-host .milkdown table tbody tr:hover td,
+.milkdown-editor-host .milkdown table.milkdown-table-block tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+html[data-theme='dark'] .milkdown {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: #e6e8ec;
+  --crepe-color-surface: #1e222a;
+  --crepe-color-surface-low: #262b34;
+  --crepe-color-on-surface: #d3d7de;
+  --crepe-color-on-surface-variant: #9aa1ad;
+  --crepe-color-outline: #4b5563;
+  --crepe-color-primary: #c7cddb;
+  --crepe-color-secondary: #333a46;
+  --crepe-color-on-secondary: #e6e8ec;
+  --crepe-color-inverse: #2a2f3a;
+  --crepe-color-on-inverse: #e6e8ec;
+  --crepe-color-inline-code: #f87171;
+  --crepe-color-error: #f87171;
+  --crepe-color-hover: #232833;
+  --crepe-color-selected: #2e3542;
+  --crepe-color-inline-area: #262b34;
+}
+
+/* mermaid 自定义代码块 */
+.mermaid-block {
+  margin: 14px 0;
+}
+.mermaid-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.mermaid-bar button {
+  transition:
+    color 0.12s,
+    border-color 0.12s;
+}
+.mermaid-bar .lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mermaid-bar .lang .material-symbols-rounded {
+  font-size: 14px;
+}
+.mermaid-bar button {
+  color: var(--text-3);
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+.mermaid-bar button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.mermaid-diagram {
+  display: block;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  cursor: pointer;
+}
+/* 子内容居中用 margin auto：溢出只发生在右侧，可滚动查看（flex 居中会让两侧都溢出无法滚动） */
+.mermaid-diagram > * {
+  margin: 0 auto;
+  width: fit-content;
+}
+.mermaid-diagram svg {
+  max-width: 100%;
+  max-height: 430px; /* D2/gnuplot 大图等比缩到可视高度，小图不受影响 */
+  width: auto;
+  height: auto;
+}
+/* LaTeX 块内容不是数学时的代码回退显示 */
+.latex-as-code {
+  width: 100%;
+  margin: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  text-align: left;
+  color: var(--text);
+}
+.tutor-msg.assistant .rich-md .latex-as-code,
+.q-text.md .latex-as-code {
+  white-space: pre-wrap;
+}
+
+/* KaTeX 独立公式过长时横向滚动 */
+.milkdown-editor-host .milkdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.mermaid-diagram.error {
+  color: var(--danger);
+  font-size: 12.5px;
+  justify-content: flex-start;
+  white-space: pre-wrap;
+}
+.mermaid-src {
+  display: none;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  outline: none;
+}
+.mermaid-block.editing .mermaid-src {
+  display: block;
+}
+.mermaid-block.editing .mermaid-diagram {
+  display: none;
+}
+/* 普通代码块 */
+.la-codeblock pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.la-codeblock pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  outline: none;
+}
+.la-codeblock .cb-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.la-codeblock .cb-lang {
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.5px;
+}
+.la-codeblock .cb-copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3);
+  border-radius: 5px;
+  padding: 2px;
+}
+.la-codeblock .cb-copy:hover {
+  color: var(--accent);
+  background: var(--bg);
+}
+.la-codeblock .cb-copy .material-symbols-rounded {
+  font-size: 15px;
+}
+/* mermaid/latex 渲染加载态 */
+.mermaid-diagram.loading {
+  animation: qpulse 1.1s ease-in-out infinite;
+  min-height: 60px;
+}
+@keyframes qpulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── 已学习按钮 + 庆祝动效（位于笔记内容末尾，随内容滚动） ───────────── */
+.note-learned .celebrate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 5;
+  animation: maskIn 0.2s ease-out;
+}
+.note-learned .confetti {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  animation: confettiBurst 1.5s cubic-bezier(0.16, 0.8, 0.4, 1) forwards;
+}
+@keyframes confettiBurst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--cx), var(--cy)) rotate(var(--cr));
+  }
+}
+.note-learned .celebrate-check {
+  font-size: 30px;
+  color: var(--mastered);
+  animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.note-learned .celebrate-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--mastered);
+}
+.learned-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--mastered) 45%, transparent);
+  color: var(--mastered);
+  background: color-mix(in srgb, var(--mastered) 8%, var(--panel));
+  border-radius: 99px;
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.1s ease,
+    filter 0.12s ease,
+    box-shadow 0.2s ease;
+}
+.learned-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mastered) 12%, transparent);
+}
+.learned-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.learned-btn:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+.learned-btn.running .material-symbols-rounded {
+  animation: spin 1.2s linear infinite;
+}
+
+/* ── 资料引用角标与悬浮来源卡片 ────────────────────────────────────────── */
+/* 编辑器内：[^n] 原文隐藏，角标由 widget 装饰渲染 */
+.cite-mark {
+  display: none;
+}
+/* 角标（编辑器 widget 与 RichText sup 共用） */
+sup.cite-badge,
+sup[data-type='footnote_reference'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0 2px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mastered) 22%, transparent);
+  color: var(--mastered);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: super;
+  cursor: default;
+  transition: background 0.12s;
+  user-select: none;
+}
+sup.cite-badge:hover,
+sup[data-type='footnote_reference']:hover {
+  background: color-mix(in srgb, var(--mastered) 38%, transparent);
+}
+/* 悬浮来源卡片 */
+.cite-pop {
+  position: fixed;
+  z-index: 220;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  display: none;
+  pointer-events: auto;
+}
+.cite-pop.open {
+  display: block;
+  animation: citePop 0.14s ease-out;
+}
+@keyframes citePop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.cite-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cite-pop-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mastered) 25%, transparent);
+  color: var(--mastered);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.cite-pop-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cite-pop-quote {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cite-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.cite-pop-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cite-pop-type .material-symbols-rounded {
+  font-size: 15px;
+  color: var(--danger);
+}
+.cite-pop-group {
+  margin-left: auto;
+  color: var(--text-3);
+}
+

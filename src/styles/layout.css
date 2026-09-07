@@ -1,0 +1,243 @@
+/* ── 布局骨架 ─────────────────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  height: 100%;
+}
+.sidebar {
+  width: 248px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+/* 拖拽调宽手柄（侧栏右缘 / 面板左缘） */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 30;
+  transition: background 0.12s ease;
+}
+.resize-handle.right {
+  right: -3px;
+}
+.resize-handle.left {
+  left: -3px;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+/* 区块标题（对话/文件） */
+.side-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--text-3);
+  padding: 6px 6px 4px;
+  user-select: none;
+}
+.sidebar.collapsed {
+  width: 0;
+  overflow: hidden;
+  border-right: none;
+}
+.app-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+/* ── 标签页 ───────────────────────────────────────────────────────────── */
+.tabbar {
+  display: flex;
+  align-items: flex-end;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 0;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  min-height: 40px;
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 13px;
+  max-width: 220px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  flex: none;
+}
+.tab:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.tab.active {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+.tab .material-symbols-rounded {
+  font-size: 16px;
+}
+.tab .tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab .close {
+  display: inline-flex;
+  border-radius: 4px;
+  visibility: hidden;
+}
+.tab:hover .close,
+.tab.active .close {
+  visibility: visible;
+}
+.tab .close:hover {
+  background: var(--border);
+}
+.tab .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.tabbar-end {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+/* ── 全局微动效 ───────────────────────────────────────────────────────── */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes maskIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes badgePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+/* 笔记切换淡入 */
+.editor-body .milkdown-editor-host {
+  animation: fadeSlideIn 0.18s ease-out;
+}
+/* 模态与遮罩 */
+.modal-mask {
+  animation: maskIn 0.15s ease-out;
+}
+.modal,
+.switcher {
+  animation: popIn 0.16s ease-out;
+}
+/* toast 滑入 */
+.toast {
+  animation: fadeSlideIn 0.2s ease-out;
+}
+/* 待答提问徽章呼吸 */
+.qcard:not(.answered) .q-badge {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+/* 按钮按压反馈 */
+.icon-btn:active,
+.mode-btn:active,
+.q-option:active,
+.send-btn:active,
+.btn:active,
+.tree-item:active,
+.session-item:active {
+  transform: scale(0.97);
+}
+.icon-btn,
+.mode-btn,
+.btn,
+.tree-item,
+.session-item,
+.switcher-item,
+.tab,
+.q-option,
+.q-submit,
+.send-btn,
+.cb-copy {
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.08s ease,
+    filter 0.12s ease;
+}
+/* 图谱入场淡入 + 节点悬停微亮 */
+.graph-fade-in {
+  animation: maskIn 0.4s ease-out;
+}
+.graph-svg-wrap .node:hover circle {
+  filter: brightness(1.12);
+}
+.graph-svg-wrap .node text {
+  pointer-events: none;
+}
+
+.editor-stack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  min-width: 0;
+  position: relative;
+}
+.editor-stack > .editor-pane {
+  flex: 1;
+  min-width: 0;
+}
+/* 答疑面板打开时压缩编辑器宽度而非覆盖 */
+/* 答疑面板打开时，编辑区与输入区让位（宽度跟随面板实际宽度） */
+.editor-stack.tutor-open > .editor-pane {
+  margin-right: var(--tutor-w, 400px);
+}
+

@@ -6,6 +6,7 @@ import { PURPOSES, purposeOf } from './types'
 import type { CardPurpose } from './types'
 import MilkdownEditor from '../editor/MilkdownEditor'
 import TagChips from './TagChips'
+import PromptDialog from '../PromptDialog'
 
 export default function CardEditor({ dark }: { dark: boolean }) {
   const s = useStore()
@@ -14,6 +15,7 @@ export default function CardEditor({ dark }: { dark: boolean }) {
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const existing = ed?.card
   const quote = existing
@@ -120,12 +122,7 @@ export default function CardEditor({ dark }: { dark: boolean }) {
           {existing && (
             <button
               className="btn danger"
-              onClick={() => {
-                if (confirm('删除这张卡片？')) {
-                  s.deleteCard(existing.id)
-                  s.setCardEditor(null)
-                }
-              }}
+              onClick={() => setConfirmOpen(true)}
             >
               删除
             </button>
@@ -139,6 +136,12 @@ export default function CardEditor({ dark }: { dark: boolean }) {
           </button>
         </div>
       </div>
+      {confirmOpen && existing && (
+        <PromptDialog
+          spec={{ kind: 'confirm', title: '删除这张卡片？', okText: '删除', danger: true, onOk: () => { s.deleteCard(existing.id); s.setCardEditor(null) } }}
+          onClose={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
   )
 }

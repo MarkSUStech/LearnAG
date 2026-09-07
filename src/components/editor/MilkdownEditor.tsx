@@ -76,6 +76,17 @@ const contentDecorations = $prose(
     }),
 )
 
+// 伪 LaTeX 自愈：网页剪藏或误点「加 LaTex」会把 ASCII 流程图等纯文本块标记为
+// latex/tex，被 KaTeX 渲染成乱码。特征：块内容含中文或箭头/连线制表字符 → 改回 text。
+// 真正的 LaTeX 数学（无中文、无制表符）不受影响。导出供 IdeMarkdown 等外部路径复用。
+const PSEUDO_TEX_RE = /```(latex|tex)\r?\n([\s\S]*?)```/g
+const PSEUDO_TEX_FEATURE = /[\u4e00-\u9fff]|─|→|←|►|◄|══|──/
+export function fixPseudoTex(md: string): string {
+  return md.replace(PSEUDO_TEX_RE, (m, _lang: string, body: string) =>
+    PSEUDO_TEX_FEATURE.test(body) ? '```text\n' + body + '```' : m,
+  )
+}
+
 interface Props {
   /** 正文（不含 frontmatter） */
   value: string
@@ -119,13 +130,20 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
     const host = hostRef.current
     if (!host) return
 
+    // 加载前先做伪 LaTeX 自愈（剪藏误标的 latex 块）
+    const initialValue = fixPseudoTex(value)
     const crepe = new Crepe({
       root: host,
-      defaultValue: value,
+      defaultValue: initialValue,
       // 保留 CodeMirror（LaTeX 功能依赖它）；code_block 的渲染由下方 nodeView 覆盖：
       // mermaid 语言块渲染图表，其余语言回退为普通代码块
     })
     crepeRef.current = crepe
+    if (initialValue !== value && !readonly) {
+      // 修正后的内容回传父层保存（仅可编辑模式）
+      setTimeout(() => onChangeRef.current?.(initialValue), 500)
+    }
+    lastPushed.current = initialValue
 
     crepe.editor.config((ctx) => {
       ctx.update(editorViewOptionsCtx, (prev) => ({
@@ -145,6 +163,21 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
         if (applyingExternal.current) return
+        // 伪 LaTeX 自愈：误点「加 LaTex」后立即把 ASCII 图等纯文本块改回 text
+        const fixed = fixPseudoTex(markdown)
+        if (fixed !== markdown) {
+          applyingExternal.current = true
+          try {
+            crepe.setMarkdown(fixed)
+          } finally {
+            setTimeout(() => {
+              applyingExternal.current = false
+            }, 0)
+          }
+          lastPushed.current = fixed
+          onChangeRef.current(fixed)
+          return
+        }
         lastPushed.current = markdown
         onChangeRef.current(markdown)
       })

@@ -16,11 +16,18 @@
         d.textContent = text
         document.body.appendChild(d)
       }
+      // ResizeObserver 循环通知是浏览器良性提示（复杂布局下偶发，官方建议忽略），不作为报错展示
+      function isBenignError(msg) {
+        return /ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i.test(msg || '')
+      }
       window.addEventListener('error', function (e) {
+        if (isBenignError(e.message)) return
         showError((e.error && e.error.stack) || e.message)
       })
       window.addEventListener('unhandledrejection', function (e) {
         var r = e.reason
+        var msg = r && r.message ? r.message : String(r)
+        if (isBenignError(msg)) return
         showError(r && r.stack ? r.stack : String(r))
       })
     </script>

@@ -356,9 +356,16 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
           diagram.classList.remove('error')
           diagram.innerHTML = svg
         } else {
-          // Crepe 把 $..$ 块转为 LaTeX 代码块；若内容明显不是数学（含 # 注释/->/引号），
-          // 按代码显示而非喂给 KaTeX 产生一屏报错
-          const looksLikeMath = !new RegExp('(^|\\n)\\s*#|->|"').test(code)
+          // Crepe 把 $..$ 块转为 LaTeX 代码块；若内容明显不是数学，按代码显示而非喂给
+          // KaTeX 产生一屏报错/毁掉排版。剪藏的 Makefile/ASCII 流程图常被误标为 latex。
+          // 非数学特征：# 注释、->、引号、中文、制表连线字符、多行缩进且无 LaTeX 命令结构
+          const hasStructure = /\\[a-zA-Z]+|\^|_|\{|\}/.test(code) // LaTeX 命令/上下标/花括号
+          const multiline = code.split('\n').length >= 3
+          const looksLikeMath =
+            !/[\u4e00-\u9fff]/.test(code) &&
+            !/[─═►◄┌┐└┘│├┤]/.test(code) &&
+            !/(^|\n)\s*#|->|"|(^|\n)\s{4,}/.test(code) &&
+            (!multiline || hasStructure)
           if (!looksLikeMath) {
             diagram.classList.remove('error')
             diagram.innerHTML = ''

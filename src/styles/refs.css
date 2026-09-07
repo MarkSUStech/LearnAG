@@ -1,0 +1,118 @@
+/* ── 资料预览器 ───────────────────────────────────────────────────────── */
+.refs-page {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: var(--bg);
+}
+.refs-tree {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--panel);
+}
+.refs-tree .tree-item {
+  padding: 5px 6px;
+}
+.refs-tree .tree-empty {
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.7;
+  padding: 10px 6px;
+}
+.refs-preview {
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.refs-preview .empty-state {
+  flex: 1;
+}
+.refs-md {
+  width: 100%;
+  max-width: var(--editor-max-width, 860px);
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.refs-md .milkdown-editor-host {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.refs-md .milkdown {
+  flex: 1;
+}
+.refs-pdf {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  border: none;
+}
+.refs-image {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.refs-image img {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.refs-text {
+  margin: 16px auto;
+  width: calc(100% - 48px);
+  max-width: var(--editor-max-width, 860px);
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 资料页 PDF 预览：顶部工具条 + 学习器入口 */
+.refs-pdf-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+.refs-pdf-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.refs-pdf-bar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+}
+.refs-pdf-bar .btn .material-symbols-rounded {
+  font-size: 16px;
+}
+.refs-pdf-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

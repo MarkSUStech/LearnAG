@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import type { SessionMeta, TreeNode } from '../types'
+import type { DialogSpec } from './PromptDialog'
 
 interface Props {
   tree: TreeNode[]
   activePath: string | null
   onOpen: (path: string) => void
-  onCreate: (parent: string | null, kind: 'file' | 'folder') => void
+  onCreate: (parent: string | null, kind: 'file' | 'folder', name: string) => void
   onDelete: (path: string) => void
   onRename: (path: string, newName: string) => void
+  onOpenDialog: (spec: DialogSpec) => void
   onOpenGraph: () => void
   onOpenRefs: () => void
+  onOpenIde?: () => void
   onOpenSettings: () => void
   onToggleTheme: () => void
   dark: boolean
@@ -49,14 +52,18 @@ export default function Sidebar(props: Props) {
           <button
             className="icon-btn"
             title="新建笔记"
-            onClick={() => props.onCreate(null, 'file')}
+            onClick={() =>
+              props.onOpenDialog({ title: '新建笔记', placeholder: '笔记名称', okText: '创建', onOk: (name) => props.onCreate(null, 'file', name) })
+            }
           >
             <span className="material-symbols-rounded">note_add</span>
           </button>
           <button
             className="icon-btn"
             title="新建文件夹"
-            onClick={() => props.onCreate(null, 'folder')}
+            onClick={() =>
+              props.onOpenDialog({ title: '新建文件夹', placeholder: '文件夹名称', okText: '创建', onOk: (name) => props.onCreate(null, 'folder', name) })
+            }
           >
             <span className="material-symbols-rounded">create_new_folder</span>
           </button>
@@ -81,10 +88,16 @@ export default function Sidebar(props: Props) {
               key={s.id}
               className={`session-item ${s.id === props.activeSessionId ? 'active' : ''}`}
               onClick={() => s.id !== props.activeSessionId && !props.agentRunning && props.onSwitchSession(s.id)}
-              onDoubleClick={() => {
-                const name = prompt('重命名对话：', s.title)
-                if (name && name.trim() && name !== s.title) props.onRenameSession(s.id, name.trim())
-              }}
+              onDoubleClick={() =>
+                props.onOpenDialog({
+                  title: '重命名对话',
+                  initial: s.title,
+                  okText: '重命名',
+                  onOk: (name) => {
+                    if (name.trim() && name !== s.title) props.onRenameSession(s.id, name.trim())
+                  },
+                })
+              }
               title={`${s.title} · ${s.messageCount} 条消息（双击重命名）`}
             >
               <span className="material-symbols-rounded">chat_bubble</span>
@@ -94,7 +107,13 @@ export default function Sidebar(props: Props) {
                 title="删除会话（归档）"
                 onClick={(e) => {
                   e.stopPropagation()
-                  props.onDeleteSession(s.id)
+                  props.onOpenDialog({
+                    kind: 'confirm',
+                    title: '删除这个对话？（记录会归档保存）',
+                    okText: '删除',
+                    danger: true,
+                    onOk: () => props.onDeleteSession(s.id),
+                  })
                 }}
               >
                 <span className="material-symbols-rounded" style={{ fontSize: 14 }}>
@@ -118,6 +137,11 @@ export default function Sidebar(props: Props) {
       </div>
 
       <div className="side-foot">
+        {props.onOpenIde && (
+          <button className="icon-btn" title="IDE 模式（代码编辑器）" onClick={props.onOpenIde}>
+            <span className="material-symbols-rounded">code_blocks</span>
+          </button>
+        )}
         <button
           className={`icon-btn ${props.graphOpen ? 'active' : ''}`}
           title="知识图谱"
@@ -165,11 +189,17 @@ function TreeItem({
         onClick={() => (isFolder ? setOpen((o) => !o) : props.onOpen(node.path))}
         onContextMenu={(e) => {
           e.preventDefault()
-          const name = prompt(isFolder ? '重命名文件夹为：' : '重命名文件为：', node.name)
-          if (name && name !== node.name) {
-            const dir = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/') + 1) : ''
-            props.onRename(node.path, dir + name)
-          }
+          props.onOpenDialog({
+            title: isFolder ? `重命名文件夹「${node.name}」` : `重命名「${node.name}」`,
+            initial: node.name,
+            okText: '重命名',
+            onOk: (name) => {
+              if (name !== node.name) {
+                const dir = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/') + 1) : ''
+                props.onRename(node.path, dir + name)
+              }
+            },
+          })
         }}
       >
         {isFolder ? (
@@ -197,7 +227,13 @@ function TreeItem({
           title="删除"
           onClick={(e) => {
             e.stopPropagation()
-            props.onDelete(node.path)
+            props.onOpenDialog({
+              kind: 'confirm',
+              title: `删除「${node.path}」？`,
+              okText: '删除',
+              danger: true,
+              onOk: () => props.onDelete(node.path),
+            })
           }}
         >
           <span className="material-symbols-rounded" style={{ fontSize: 15 }}>

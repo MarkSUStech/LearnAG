@@ -26,6 +26,9 @@ import { reportMermaidFailure } from './agent/mermaidfix.js'
 import * as pdfstudy from './pdfstudy.js'
 import { keyFor, getOutlineTree } from './pdfdoc.js'
 import * as rag from './rag.js'
+import { lspRoutes, handleLspConnection } from './lsp.js'
+import { runRoutes, handleRunConnection } from './run.js'
+import { setupWebSocket } from './ws.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
@@ -170,7 +173,19 @@ app.post('/api/settings/test', async (req, res) => {
 
 app.get('/api/tree', (req, res) => {
   try {
-    res.json({ tree: vault.getTree(), vaultPath: vault.getVaultRoot() })
+    // ?all=1：全部文件类型（IDE 资源管理器）；默认仅 md（学习模式文件树）
+    const all = req.query.all === '1' || req.query.all === 'true'
+    res.json({ tree: vault.getTree({ all }), vaultPath: vault.getVaultRoot() })
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+// ── IDE 模式 ────────────────────────────────────────────────────────────────
+
+app.get('/api/ide/search', (req, res) => {
+  try {
+    res.json(vault.searchText(String(req.query.q ?? '')))
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }
@@ -665,9 +680,14 @@ if (fs.existsSync(distDir)) {
   })
 }
 
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
   const s = loadSettings()
   console.log(`[learn-agent] 服务已启动 http://127.0.0.1:${PORT}`)
   console.log(`[learn-agent] vault: ${s.vaultPath}`)
   console.log(`[learn-agent] 模型: ${s.model} @ ${s.apiBaseURL}`)
 })
+
+// IDE 语言服务器 / 编译运行：REST 路由 + 统一 WebSocket 通道
+lspRoutes(app)
+runRoutes(app)
+setupWebSocket(server)

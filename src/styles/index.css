@@ -1,0 +1,15 @@
+/* learn-agent 全局样式入口：按领域拆分的模块化样式。
+   ⚠️ import 顺序即层叠顺序（等特异性规则后写的胜出），调整顺序前先确认无跨模块覆盖。
+   依赖关系约定：tokens 为最底层设计令牌；layout 只含骨架；其余按组件域划分；
+   IDE 模式样式在 ide.css（.ide-shell 作用域内自带配色，不依赖本文件内的组件规则）。 */
+@import './tokens.css';
+@import './layout.css';
+@import './sidebar.css';
+@import './editor.css';
+@import './tutor.css';
+@import './inputbar.css';
+@import './graph.css';
+@import './dialogs.css';
+@import './refs.css';
+@import './pdfstudy.css';
+@import './ide.css';

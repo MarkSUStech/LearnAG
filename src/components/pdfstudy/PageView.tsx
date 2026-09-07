@@ -110,15 +110,17 @@ export default function PageView({ pdf, pageNumber, dim, scale, active }: Props)
     const pageRect = pageEl.getBoundingClientRect()
     const rects = [...range.getClientRects()].filter((r) => r.width > 0.5 && r.height > 1)
     if (!rects.length) return null
-    // 合并同一行的 rect
+    // 合并同一行的 rect；并钳制到页面边界内——文本层偶发的缩放不同步
+    // （span 布局与 scale 短暂不一致）会产生越界 rect，画出来会超出页面
     const lines: Quad[] = []
     for (const r of rects) {
       const q: Quad = {
-        x1: (r.left - pageRect.left) / scale,
-        y1: (r.top - pageRect.top) / scale,
-        x2: (r.right - pageRect.left) / scale,
-        y2: (r.bottom - pageRect.top) / scale,
+        x1: Math.min(dim.w, Math.max(0, (r.left - pageRect.left) / scale)),
+        y1: Math.min(dim.h, Math.max(0, (r.top - pageRect.top) / scale)),
+        x2: Math.min(dim.w, Math.max(0, (r.right - pageRect.left) / scale)),
+        y2: Math.min(dim.h, Math.max(0, (r.bottom - pageRect.top) / scale)),
       }
+      if (q.x2 - q.x1 < 0.5 || q.y2 - q.y1 < 0.5) continue
       const last = lines[lines.length - 1]
       if (last) {
         const overlap = Math.min(last.y2, q.y2) - Math.max(last.y1, q.y1)
