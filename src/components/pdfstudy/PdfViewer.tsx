@@ -65,12 +65,21 @@ export default function PdfViewer() {
         currentPdf = doc
         setPdf(doc)
         s.setPageCount(doc.numPages)
-        // 预取全部页面尺寸（学习场景文档量级可接受）
-        const dims = []
-        for (let i = 1; i <= doc.numPages; i++) {
-          const page = await doc.getPage(i)
-          const vp = page.getViewport({ scale: 1 })
-          dims.push({ w: vp.width, h: vp.height })
+        // 分块并行预取页面尺寸：大文档（上千页）串行 await 会拖慢首屏；
+        // 每块完成即更新，页面槽位随之渐进可渲染
+        const dims: { w: number; h: number }[] = []
+        const CHUNK = 32
+        for (let i = 1; i <= doc.numPages; i += CHUNK) {
+          if (myToken !== currentLoadToken) return
+          const end = Math.min(i + CHUNK - 1, doc.numPages)
+          const pages = await Promise.all(
+            Array.from({ length: end - i + 1 }, (_, k) => doc.getPage(i + k)),
+          )
+          for (const page of pages) {
+            const vp = page.getViewport({ scale: 1 })
+            dims.push({ w: vp.width, h: vp.height })
+          }
+          s.setPageDims([...dims])
         }
         if (myToken !== currentLoadToken) return
         s.setPageDims(dims)

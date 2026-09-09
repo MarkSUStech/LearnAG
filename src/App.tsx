@@ -69,6 +69,15 @@ export default function App() {
     const w = Number(localStorage.getItem('la-tutor-w'))
     return w >= 300 && w <= 640 ? w : 400
   })
+  // 分屏：副面板单标签（标签拖到内容区右缘停靠；拖回标签栏 / 左缘取消）
+  const [splitTab, setSplitTab] = useState<Tab | null>(null)
+  const [splitRatio, setSplitRatio] = useState(() => {
+    const r = Number(localStorage.getItem('la-split-ratio'))
+    return r >= 0.25 && r <= 0.75 ? r : 0.55
+  })
+  const [dragActive, setDragActive] = useState(false)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null) // 标签栏插入位置
+  const [dragZone, setDragZone] = useState<'left' | 'right' | null>(null)
 
   // 侧栏拖拽调宽（sidebar 向右拖 / tutor 向左拖）
   function startResize(e: React.MouseEvent, kind: 'sidebar' | 'tutor') {
@@ -118,6 +127,9 @@ export default function App() {
   activeIdxRef.current = activeIdx
   const appViewRef = useRef(appView)
   appViewRef.current = appView
+  const dragTabRef = useRef<{ idx: number; from: 'primary' | 'split' } | null>(null)
+  const splitRatioRef = useRef(splitRatio)
+  splitRatioRef.current = splitRatio
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
@@ -299,6 +311,105 @@ export default function App() {
       setActiveIdx((ai) => (idx < ai ? ai - 1 : Math.min(ai, next.length - 1)))
       return next
     })
+  }
+
+  // ── 标签拖拽：排序 / 左右分屏停靠 ────────────────────────────────────────
+  function moveTab(from: number, to: number) {
+    setTabs((ts) => {
+      const next = [...ts]
+      const [tab] = next.splice(from, 1)
+      next.splice(to, 0, tab)
+      return next
+    })
+    setActiveIdx(to)
+  }
+
+  function dockTab(idx: number) {
+    const tab = tabs[idx]
+    if (!tab) return
+    flushSaves()
+    const next = tabs.filter((_, i) => i !== idx)
+    if (splitTab) next.splice(Math.min(activeIdx, next.length), 0, splitTab) // 原副面板标签退回标签栏
+    setTabs(next)
+    setActiveIdx((ai) => (idx < ai ? Math.max(0, ai - 1) : Math.min(ai, next.length - 1)))
+    setSplitTab(tab)
+    setDragActive(false)
+    setDragZone(null)
+  }
+
+  function undockSplit(atIdx?: number) {
+    if (!splitTab) return
+    flushSaves()
+    const next = [...tabs]
+    const pos = atIdx ?? Math.min(activeIdx + 1, next.length)
+    next.splice(pos, 0, splitTab)
+    setTabs(next)
+    setActiveIdx(pos)
+    setSplitTab(null)
+    setDragActive(false)
+    setDragZone(null)
+  }
+
+  function endTabDrag() {
+    dragTabRef.current = null
+    setDragActive(false)
+    setDragOverIdx(null)
+    setDragZone(null)
+  }
+
+  function onTabDragStart(e: React.DragEvent, idx: number) {
+    dragTabRef.current = { idx, from: 'primary' }
+    setDragActive(true)
+    e.dataTransfer.effectAllowed = 'move'
+    try {
+      e.dataTransfer.setData('text/plain', 'path' in tabs[idx] ? tabs[idx].path : tabs[idx].kind)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function onTabDragOver(e: React.DragEvent, idx: number) {
+    const d = dragTabRef.current
+    if (!d || d.from !== 'primary' || d.idx === idx) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setDragOverIdx(e.clientX < rect.left + rect.width / 2 ? idx : idx + 1)
+  }
+
+  function onTabDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const d = dragTabRef.current
+    const to = dragOverIdx
+    if (d && d.from === 'primary' && to != null) {
+      let target = to
+      if (d.idx < to) target -= 1
+      if (target !== d.idx) moveTab(d.idx, target)
+    }
+    endTabDrag()
+  }
+
+  function startSplitResize(e: React.MouseEvent) {
+    e.preventDefault()
+    const wsEl = (e.currentTarget as HTMLElement).parentElement
+    const w0 = wsEl?.clientWidth || window.innerWidth
+    const startR = splitRatioRef.current
+    const startX = e.clientX
+    function onMove(ev: MouseEvent) {
+      const ratio = Math.min(0.75, Math.max(0.25, startR + (ev.clientX - startX) / w0))
+      setSplitRatio(Number(ratio.toFixed(3)))
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('la-split-ratio', String(splitRatioRef.current))
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
   }
 
   function openGraph() {
@@ -598,6 +709,90 @@ export default function App() {
 
   const vaultName = vaultPath ? vaultPath.replace(/\\/g, '/').split('/').pop() || vaultPath : ''
 
+  /** 渲染一个标签页的内容（主面板 / 分屏副面板共用）；isSplit=true 时无答疑面板与冲突条 */
+  function renderPaneContent(tab: Tab, isSplit: boolean) {
+    if (tab.kind === 'note') {
+      const p = tab.path
+      return (
+        <>
+          {!isSplit && conflicts[p] && (
+            <div className="conflict-tip">
+              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>
+                warning
+              </span>
+              该文件刚被外部（可能是 agent）更新，而本地有未保存的修改。
+              <button
+                onClick={() => {
+                  void api
+                    .getFile(p)
+                    .then((f) => setContents((c) => ({ ...c, [p]: f.content })))
+                  setConflicts((cf) => ({ ...cf, [p]: false }))
+                }}
+              >
+                加载新版本
+              </button>
+              <button onClick={() => setConflicts((cf) => ({ ...cf, [p]: false }))}>忽略</button>
+            </div>
+          )}
+          <div className={`editor-stack ${tutorFor === p && !isSplit ? 'tutor-open' : ''}`}>
+            {contents[p] !== undefined ? (
+              <EditorPane
+                key={p}
+                path={p}
+                content={contents[p]}
+                streaming={Boolean(streaming[p])}
+                dark={dark}
+                onEdit={handleEdit}
+                onWikilink={openWikilink}
+                onMarkLearned={(pp, title) => void markLearned(pp, title)}
+                learnedRunning={Boolean(learnedFlow)}
+                celebrate={celebratePath === p}
+                tutorOpen={tutorFor === p && !isSplit}
+                onToggleTutor={() => setTutorFor((cur) => (cur === p ? null : p))}
+              />
+            ) : (
+              <div className="empty-state">
+                <span className="material-symbols-rounded">progress_activity</span>
+                加载中…
+              </div>
+            )}
+            {tutorFor === p && !isSplit && (
+              <TutorPanel
+                notePath={p}
+                noteTitle={p.split('/').pop()?.replace(/\.md$/, '') ?? ''}
+                width={tutorWidth}
+                onResizeStart={(e) => startResize(e, 'tutor')}
+                onClose={() => setTutorFor(null)}
+              />
+            )}
+          </div>
+        </>
+      )
+    }
+    if (tab.kind === 'pdf') {
+      const p = tab.path
+      return (
+        <div className="editor-stack">
+          <PdfStudyPane
+            path={p}
+            dark={dark}
+            files={flattenFiles(tree)}
+            onComposeNotes={(message, attachments) => void sendToAgent(message, attachments, '写作')}
+          />
+        </div>
+      )
+    }
+    if (tab.kind === 'graph') return <GraphView graph={graph} onOpenNote={(path) => void openNote(path)} />
+    if (tab.kind === 'refs')
+      return <ReferenceBrowser tree={tree} dark={dark} onOpenNote={(path) => void openNote(path)} onOpenPdf={openPdf} />
+    return (
+      <div className="empty-state">
+        <span className="material-symbols-rounded">note_stack</span>
+        <div>从左侧打开一篇笔记，或用下方输入框与 agent 交流</div>
+      </div>
+    )
+  }
+
   // IDE 模式：整个界面切换为 IDE 壳（代码编辑 / md 分屏 / PDF 阅读），与学习模式互斥
   if (appView === 'ide') {
     return (
@@ -661,7 +856,14 @@ export default function App() {
             return (
               <div
                 key={tabKey}
-                className={`tab ${i === activeIdx ? 'active' : ''}`}
+                draggable
+                onDragStart={(e) => onTabDragStart(e, i)}
+                onDragOver={(e) => onTabDragOver(e, i)}
+                onDrop={onTabDrop}
+                onDragEnd={endTabDrag}
+                className={`tab ${i === activeIdx ? 'active' : ''}${dragOverIdx === i ? ' drop-before' : ''}${
+                  dragOverIdx === i + 1 ? ' drop-after' : ''
+                }${dragActive && dragTabRef.current?.idx === i ? ' dragging' : ''}`}
                 onClick={() => {
                   flushSaves()
                   setActiveIdx(i)
@@ -686,92 +888,109 @@ export default function App() {
               </div>
             )
           })}
+          {splitTab && (
+            <div
+              key={
+                'split:' +
+                (splitTab.kind === 'graph' || splitTab.kind === 'refs'
+                  ? splitTab.kind
+                  : `${splitTab.kind}:${splitTab.path}`)
+              }
+              draggable
+              onDragStart={(e) => {
+                dragTabRef.current = { idx: -1, from: 'split' }
+                setDragActive(true)
+                e.dataTransfer.effectAllowed = 'move'
+                try {
+                  e.dataTransfer.setData('text/plain', splitTab && 'path' in splitTab ? splitTab.path : splitTab.kind)
+                } catch {
+                  /* ignore */
+                }
+              }}
+              onDragEnd={endTabDrag}
+              className="tab docked"
+              title="分屏页面：拖回标签栏取消分屏，拖到右缘区更换分屏内容"
+            >
+              <span className="material-symbols-rounded">splitscreen_right</span>
+              <span className="tab-title">
+                {splitTab.kind === 'graph'
+                  ? '知识图谱'
+                  : splitTab.kind === 'refs'
+                    ? '资料'
+                    : splitTab.path.split('/').pop()?.replace(/\.(md|pdf)$/i, '') ?? ''}
+              </span>
+              <span
+                className="close"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSplitTab(null)
+                }}
+              >
+                <span className="material-symbols-rounded" style={{ fontSize: 14 }}>
+                  close
+                </span>
+              </span>
+            </div>
+          )}
           <div className="tabbar-end" />
         </div>
 
-        {activeNotePath ? (
-          <>
-            {conflicts[activeNotePath] && (
-              <div className="conflict-tip">
-                <span className="material-symbols-rounded" style={{ fontSize: 16 }}>
-                  warning
-                </span>
-                该文件刚被外部（可能是 agent）更新，而本地有未保存的修改。
-                <button
-                  onClick={() => {
-                    void api
-                      .getFile(activeNotePath)
-                      .then((f) => setContents((c) => ({ ...c, [activeNotePath]: f.content })))
-                    setConflicts((cf) => ({ ...cf, [activeNotePath]: false }))
-                  }}
-                >
-                  加载新版本
-                </button>
-                <button onClick={() => setConflicts((cf) => ({ ...cf, [activeNotePath]: false }))}>忽略</button>
+        <div
+          className="workspace"
+          style={
+            splitTab
+              ? ({ ['--split-ratio' as string]: `${splitRatio * 100}%` } as React.CSSProperties)
+              : undefined
+          }
+        >
+          <div className="pane pane-primary">
+            {activeTab ? (
+              renderPaneContent(activeTab, false)
+            ) : (
+              <div className="empty-state">
+                <span className="material-symbols-rounded">note_stack</span>
+                <div>从左侧打开一篇笔记，或用下方输入框与 agent 交流</div>
               </div>
             )}
-            <div className={`editor-stack ${tutorFor === activeNotePath ? 'tutor-open' : ''}`}>
-              {contents[activeNotePath] !== undefined ? (
-                <EditorPane
-                  key={activeNotePath}
-                  path={activeNotePath}
-                  content={contents[activeNotePath]}
-                  streaming={Boolean(streaming[activeNotePath])}
-                  dark={dark}
-                  onEdit={handleEdit}
-                  onWikilink={openWikilink}
-                  onMarkLearned={(p, title) => void markLearned(p, title)}
-                  learnedRunning={Boolean(learnedFlow)}
-                  celebrate={celebratePath === activeNotePath}
-                  tutorOpen={tutorFor === activeNotePath}
-                  onToggleTutor={() =>
-                    setTutorFor((cur) => (cur === activeNotePath ? null : activeNotePath))
-                  }
-                />
-              ) : (
-                <div className="empty-state">
-                  <span className="material-symbols-rounded">progress_activity</span>
-                  加载中…
-                </div>
-              )}
-              {tutorFor === activeNotePath && (
-                <TutorPanel
-                  notePath={activeNotePath}
-                  noteTitle={activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}
-                  width={tutorWidth}
-                  onResizeStart={(e) => startResize(e, 'tutor')}
-                  onClose={() => setTutorFor(null)}
-                />
-              )}
+          </div>
+          {splitTab && <div className="split-divider" onMouseDown={startSplitResize} />}
+          {splitTab && <div className="pane pane-secondary">{renderPaneContent(splitTab, true)}</div>}
+        </div>
+
+        {dragActive && (
+          <>
+            <div
+              className={`ws-drop ws-drop-left${dragZone === 'left' ? ' hover' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragZone('left')
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (dragTabRef.current?.from === 'split') undockSplit()
+                endTabDrag()
+              }}
+            >
+              <span className="material-symbols-rounded">align_horizontal_left</span>
+              <div>在主面板打开</div>
+            </div>
+            <div
+              className={`ws-drop ws-drop-right${dragZone === 'right' ? ' hover' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragZone('right')
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const d = dragTabRef.current
+                if (d?.from === 'primary') dockTab(d.idx)
+                endTabDrag()
+              }}
+            >
+              <span className="material-symbols-rounded">splitscreen_right</span>
+              <div>停靠到右侧分屏</div>
             </div>
           </>
-        ) : activePdfPath ? (
-          <div className={`editor-stack ${tutorFor === activePdfPath ? 'tutor-open' : ''}`}>
-            <PdfStudyPane
-              path={activePdfPath}
-              dark={dark}
-              files={flattenFiles(tree)}
-              onComposeNotes={(message, attachments) => void sendToAgent(message, attachments, '写作')}
-            />
-            {tutorFor === activePdfPath && (
-              <TutorPanel
-                notePath={activePdfPath}
-                noteTitle={activePdfPath.split('/').pop()?.replace(/\.pdf$/i, '') ?? ''}
-                width={tutorWidth}
-                onResizeStart={(e) => startResize(e, 'tutor')}
-                onClose={() => setTutorFor(null)}
-              />
-            )}
-          </div>
-        ) : activeTab?.kind === 'graph' ? (
-          <GraphView graph={graph} onOpenNote={(p) => void openNote(p)} />
-        ) : activeTab?.kind === 'refs' ? (
-          <ReferenceBrowser tree={tree} dark={dark} onOpenNote={(p) => void openNote(p)} onOpenPdf={openPdf} />
-        ) : (
-          <div className="empty-state">
-            <span className="material-symbols-rounded">note_stack</span>
-            <div>从左侧打开一篇笔记，或用下方输入框与 agent 交流</div>
-          </div>
         )}
 
         <InputBar

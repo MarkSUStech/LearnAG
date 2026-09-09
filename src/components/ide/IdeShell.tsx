@@ -228,6 +228,39 @@ export default function IdeShell({ dark, onToggleTheme, onExit }: Props) {
     })
   }
 
+  // 标签拖动排序
+  const dragIdxRef = useRef<number | null>(null)
+  function moveTab(from: number, to: number) {
+    setTabs((ts) => {
+      const next = [...ts]
+      const [t] = next.splice(from, 1)
+      next.splice(to, 0, t)
+      return next
+    })
+  }
+  function onTabDragStart(e: React.DragEvent, idx: number) {
+    dragIdxRef.current = idx
+    e.dataTransfer.effectAllowed = 'move'
+    try {
+      e.dataTransfer.setData('text/plain', '')
+    } catch {
+      /* ignore */
+    }
+  }
+  function onTabDragOver(e: React.DragEvent, idx: number) {
+    const from = dragIdxRef.current
+    if (from == null || from === idx) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+  function onTabDrop(e: React.DragEvent, idx: number) {
+    e.preventDefault()
+    const from = dragIdxRef.current
+    dragIdxRef.current = null
+    if (from == null || from === idx) return
+    moveTab(from, idx)
+  }
+
   // ── 文件管理 ─────────────────────────────────────────────────────────────
   async function createEntry(dir: string | null, kind: 'file' | 'folder', name: string) {
     const p = (dir ? dir + '/' : '') + name
@@ -513,6 +546,11 @@ export default function IdeShell({ dark, onToggleTheme, onExit }: Props) {
             return (
               <div
                 key={path}
+                draggable
+                onDragStart={(e) => onTabDragStart(e, tabs.indexOf(path))}
+                onDragOver={(e) => onTabDragOver(e, tabs.indexOf(path))}
+                onDrop={(e) => onTabDrop(e, tabs.indexOf(path))}
+                onDragEnd={() => (dragIdxRef.current = null)}
                 className={`ide-tab ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   void flushOne(activePath ?? '')

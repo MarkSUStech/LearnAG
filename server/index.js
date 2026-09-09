@@ -471,13 +471,14 @@ app.delete('/api/tutor/session', (req, res) => {
 
 // 原始文件输出（资料预览器：PDF/图片/文本等）
 app.get('/api/raw', (req, res) => {
+  console.log('[raw] 请求文件:', String(req.query.path || ''))
   try {
     const abs = vault.resolveInVault(String(req.query.path || ''))
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    res.setHeader('Content-Type', mimeOf(abs))
-    fs.createReadStream(abs).pipe(res)
+    // sendFile 支持 Range/206 分段请求：pdf.js 对大 PDF 增量拉取，无需整本下载完才渲染
+    res.sendFile(abs, { headers: { 'Content-Type': mimeOf(abs) }, acceptRanges: true })
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }

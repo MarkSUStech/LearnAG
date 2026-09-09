@@ -23,7 +23,7 @@ const blockMath = {
     if (m) return { type: 'blockMath', raw: m[0], text: m[1].trim() }
   },
   renderer(token: { text: string }) {
-    return `<p class="q-katex">${katex.renderToString(token.text, { displayMode: true, throwOnError: false, strict: false })}</p>`
+    return `<p class="q-katex">${katex.renderToString(unescapeMathPipes(token.text), { displayMode: true, throwOnError: false, strict: false })}</p>`
   },
 }
 
@@ -38,8 +38,28 @@ const inlineMath = {
     if (m) return { type: 'inlineMath', raw: m[0], text: m[1].trim() }
   },
   renderer(token: { text: string }) {
-    return katex.renderToString(token.text, { throwOnError: false, strict: false })
+    return katex.renderToString(unescapeMathPipes(token.text), { throwOnError: false, strict: false })
   },
+}
+
+/** 表格分列会按裸 | 切单元格，公式里的 |（如 $P(B_j|A)$）要先转义；渲染公式时还原 */
+function unescapeMathPipes(text: string) {
+  return text.replace(/\\\|/g, '|')
+}
+
+function escapeMathPipes(text: string) {
+  const guard = (m: string) => m.replace(/\|/g, '\\|')
+  return text
+    .split(/(```[\s\S]*?```)/g) // 代码围栏不动
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part
+            .split(/(`[^`\n]*`)/g) // 行内代码不动
+            .map((p, j) => (j % 2 === 1 ? p : p.replace(/\$\$([\s\S]+?)\$\$/g, guard).replace(/\$([^$\n]+?)\$/g, guard)))
+            .join(''),
+    )
+    .join('')
 }
 
 marked.use({
@@ -87,7 +107,7 @@ export function renderRichMarkdown(text: string): RenderedMd {
     })
     .join('')
 
-  const raw = marked.parse(body, { async: false }) as string
+  const raw = marked.parse(escapeMathPipes(body), { async: false }) as string
   const html = DOMPurify.sanitize(raw, { ADD_ATTR: ['style', 'data-ref'] })
   const withLinks = html.replace(
     /\[\[([^\[\]\n]{1,80})\]\]/g,

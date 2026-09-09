@@ -217,10 +217,10 @@ function TreeItem({
           </>
         ) : (
           <span className="material-symbols-rounded" style={{ marginLeft: 21 }}>
-            description
+            {node.path.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
           </span>
         )}
-        <span className="name">{node.name.replace(/\.md$/i, '')}</span>
+        <span className="name">{node.name.replace(/\.(md|pdf)$/i, '')}</span>
         <span
           className="icon-btn"
           style={{ marginLeft: 'auto', width: 22, height: 22, opacity: 0.55 }}

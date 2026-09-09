@@ -75,10 +75,20 @@ export default function IdePdf({ path, dark }: { path: string; dark: boolean }) 
         void currentPdf?.destroy().catch(() => undefined)
         currentPdf = doc
         setPdf(doc)
+        // 分块并行预取页面尺寸：大文档串行 await 会拖慢首屏；每块完成即渐进更新
         const ds: PageDim[] = []
-        for (let i = 1; i <= doc.numPages; i++) {
-          const vp = (await doc.getPage(i)).getViewport({ scale: 1 })
-          ds.push({ w: vp.width, h: vp.height })
+        const CHUNK = 32
+        for (let i = 1; i <= doc.numPages; i += CHUNK) {
+          if (myToken !== currentLoadToken) return
+          const end = Math.min(i + CHUNK - 1, doc.numPages)
+          const pages = await Promise.all(
+            Array.from({ length: end - i + 1 }, (_, k) => doc.getPage(i + k)),
+          )
+          for (const p of pages) {
+            const vp = p.getViewport({ scale: 1 })
+            ds.push({ w: vp.width, h: vp.height })
+          }
+          setDims([...ds])
         }
         if (myToken !== currentLoadToken) return
         setDims(ds)

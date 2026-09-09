@@ -168,7 +168,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
         if (fixed !== markdown) {
           applyingExternal.current = true
           try {
-            crepe.setMarkdown(fixed)
+            crepe.editor.action(replaceAll(fixed))
           } finally {
             setTimeout(() => {
               applyingExternal.current = false

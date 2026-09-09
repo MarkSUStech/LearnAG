@@ -77,7 +77,7 @@ function buildTree(absDir, relDir = '', all = false) {
         type: 'folder',
         children: buildTree(path.join(absDir, ent.name), rel, all),
       })
-    } else if (ent.isFile() && (includeAll || ent.name.toLowerCase().endsWith('.md'))) {
+    } else if (ent.isFile() && (includeAll || ['.md', '.pdf'].includes(ent.name.toLowerCase().slice(ent.name.lastIndexOf('.')).toLowerCase()))) {
       out.push({ name: ent.name, path: rel, type: 'file' })
     }
   }
@@ -88,7 +88,7 @@ function buildTree(absDir, relDir = '', all = false) {
   return out
 }
 
-/** getTree({ all: true }) 返回全部文件类型（IDE 资源管理器），默认仅 md（学习模式文件树） */
+/** getTree({ all: true }) 返回全部文件类型（IDE 资源管理器）；默认 md + pdf（学习模式文件树，PDF 可在学习器中打开） */
 export function getTree({ all = false } = {}) {
   return buildTree(vaultRoot, '', all)
 }
