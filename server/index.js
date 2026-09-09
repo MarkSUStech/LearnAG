@@ -34,23 +34,53 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
 
 // 崩溃防护：本地单用户工具，记录日志并保持存活
-process.on('uncaughtException', (err) => {
-  const line = `[uncaughtException] ${new Date().toISOString()} ${err.stack || err}\n`
-  console.error(line)
+// stdout/stderr 管道断开（启动它的终端被关闭）时 EPIPE 不能变成致命错误——
+// 曾因「崩溃处理器里 console.error 抛 EPIPE → 又触发崩溃处理器」的同步循环写出 55GB 日志
+process.stdout?.on?.('error', () => {})
+process.stderr?.on?.('error', () => {})
+
+const CRASH_LOG = path.join(__dirname, '..', '.learn-agent', 'crash.log')
+let lastCrashLine = ''
+let lastCrashAt = 0
+
+function appendCrashLog(line) {
   try {
-    fs.appendFileSync(path.join(__dirname, '..', '.learn-agent', 'crash.log'), line)
+    const now = Date.now()
+    if (line === lastCrashLine && now - lastCrashAt < 1000) return // 同一错误限速
+    lastCrashLine = line
+    lastCrashAt = now
+    // 大小上限 10MB：超过则只保留最后 1MB
+    try {
+      if (fs.existsSync(CRASH_LOG) && fs.statSync(CRASH_LOG).size > 10 * 1024 * 1024) {
+        const tail = fs.readFileSync(CRASH_LOG).slice(-1024 * 1024)
+        fs.writeFileSync(CRASH_LOG, tail)
+      }
+    } catch {
+      /* ignore */
+    }
+    fs.appendFileSync(CRASH_LOG, line)
   } catch {
-    /* ignore */
+    /* 日志写入失败绝不二次抛出 */
   }
+}
+
+process.on('uncaughtException', (err) => {
+  const line = `[uncaughtException] ${new Date().toISOString()} ${err?.stack || err}\n`
+  try {
+    console.error(line)
+  } catch {
+    /* stdout 可能已断开 */
+  }
+  appendCrashLog(line)
 })
 process.on('unhandledRejection', (err) => {
   const line = `[unhandledRejection] ${new Date().toISOString()} ${err instanceof Error ? err.stack : err}\n`
-  console.error(line)
   try {
-    fs.appendFileSync(path.join(__dirname, '..', '.learn-agent', 'crash.log'), line)
+    console.error(line)
   } catch {
-    /* ignore */
+    /* stdout 可能已断开 */
   }
+  appendCrashLog(line)
 })
 
 const app = express()
