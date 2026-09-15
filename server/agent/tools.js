@@ -232,6 +232,29 @@ export const toolDefs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'delegate',
+      description:
+        '把一个具体任务委派给专职子 Agent 完成并拿回结果。可选 role：' +
+        'research（研究：检索笔记/PDF/RAG/知识网络，返回带来源的事实）、' +
+        'resource（资源推荐：联网检索网页与论文并整理入库）、' +
+        'content（内容写作：按任务撰写或修改笔记）、' +
+        'visualize（可视化：为笔记绘制或修改 mermaid 图表）、' +
+        'scaffold（脚手架：组装最终产出、沉淀知识网络）。' +
+        '委派前把任务描述写具体：目标、输入素材、输出路径、要点与判定标准。',
+      parameters: {
+        type: 'object',
+        properties: {
+          role: { type: 'string', enum: ['research', 'resource', 'content', 'visualize', 'scaffold'], description: '子 Agent 类型' },
+          task: { type: 'string', description: '具体任务描述（目标/素材/输出路径/要求）' },
+          context: { type: 'string', description: '可选。随任务附带的上下文（如研究结果、用户要求的原文）' },
+        },
+        required: ['role', 'task'],
+      },
+    },
+  },
 ]
 
 // ── 执行器 ──────────────────────────────────────────────────────────────────
@@ -348,8 +371,7 @@ export async function executeTool(name, args, hooks = {}) {
           graphSynced = syncNoteToGraph(rel, content)
         }
         // 结构性保障 2：范式符合度检查（图表密度 / 篇幅），不足时提示模型补足
-        const styleHint = checkNoteStyle(rel, content)
-        return JSON.stringify({
+              return JSON.stringify({
           ok: true,
           path: rel,
           bytes: Buffer.byteLength(content, 'utf8'),
@@ -362,13 +384,23 @@ export async function executeTool(name, args, hooks = {}) {
                   '（新增 status=learnable、mastery=0 的节点并用 leads-to/depends-on 连边），保持灰色前沿不断生长。',
               }
             : {}),
-          ...(styleHint ? { styleHint } : {}),
         })
       }
       case 'delete_note': {
         vault.deleteEntry(args.path)
         vault.notifyWrite(String(args.path).replace(/\\/g, '/'), 'unlink')
         return JSON.stringify({ ok: true })
+      }
+      case 'delegate': {
+        if (typeof hooks.delegate !== 'function') {
+          return JSON.stringify({ error: 'delegate 在当前上下文不可用（仅管理 Agent 可委派）' })
+        }
+        const d = await hooks.delegate({
+          role: String(args.role || ''),
+          task: String(args.task || ''),
+          context: args.context == null ? '' : String(args.context),
+        })
+        return JSON.stringify({ ok: true, result: d })
       }
       case 'read_graph': {
         return JSON.stringify(readGraph())
@@ -476,47 +508,3 @@ function parseFrontmatter(content) {
   return out
 }
 
-/** 知识笔记范式符合度检查：图表密度与篇幅，不足时返回给模型的提示 */
-const styleHintedAt = new Map() // rel -> 上次风格提示时间
-
-function checkNoteStyle(rel, content) {
-  if (!rel.startsWith('笔记/') || !rel.includes('/note/')) return null
-  if (/总览/.test(path.basename(rel))) return null // 总览目录笔记豁免
-  const hints = []
-  const mermaidCount = (content.match(/```mermaid/g) || []).length
-  if (mermaidCount < 2) {
-    hints.push(
-      `本笔记只有 ${mermaidCount} 张 Mermaid 图，低于范式要求的至少 2 张。` +
-        `请再调用一次 write_note 重写本笔记，补充图表：结构/关系用 flowchart 或 classDiagram，动态过程用 sequenceDiagram 或 stateDiagram`,
-    )
-  }
-  const lines = content.split(`\n`).length
-  if (lines > 140) {
-    hints.push(`本笔记已达 ${lines} 行（范式预算 60~120 行）。` + '请考虑按「笔记拆分规范」把例题或推导拆为独立笔记，或精简正文。')
-  }
-  // 内容深度检查：小节只有一两句话、或只有图没有正文解读 → 提示加厚
-  const thin = []
-  for (const sec of content.split(/\n(?=#{2,3}\s)/)) {
-    const head = (sec.match(/^#{2,3}\s+(.+)$/m) || [])[1] || ""
-    if (!head || /总览|参考文献/.test(head)) continue
-    const bodyLines = sec.split(`\n`).filter((l) => {
-      const t2 = l.trim()
-      return t2 && !t2.startsWith("#") && !t2.startsWith("``") && !t2.startsWith("|") && !t2.startsWith(">")
-    })
-    const hasChart = sec.includes("``mermaid")
-    if (hasChart && bodyLines.length < 3) thin.push(head)
-    else if (!hasChart && bodyLines.length < 2) thin.push(head)
-  }
-  if (thin.length) {
-    hints.push(`以下小节内容单薄（只有一两句话、或只有图没有正文解读）：${thin.join("、")}。每张图后必须跟 3 句以上的正文解读，每个小节都要有实质讲解，请重写加厚这些小节。`)
-  }
-  if (!hints.length) {
-    styleHintedAt.delete(rel)
-    return null
-  }
-  // 防循环：同一篇笔记 10 分钟内只提示一次风格问题，避免模型无限重写同一文件
-  const lastHinted = styleHintedAt.get(rel) ?? 0
-  if (Date.now() - lastHinted < 10 * 60 * 1000) return null
-  styleHintedAt.set(rel, Date.now())
-  return hints.length ? hints.join('；') : null
-}

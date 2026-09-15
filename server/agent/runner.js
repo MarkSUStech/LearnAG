@@ -3,15 +3,18 @@ import path from 'node:path'
 import { loadSettings } from '../settings.js'
 import * as vault from '../vault.js'
 import { graphSummary } from '../graph.js'
-import { buildSystemPrompt, AGENT_WORKBENCH, MEMORY_NOTE, PLAN_NOTE } from './prompt.js'
+import { buildManagerSystem, buildRouterMessages, buildDirectMessages, AGENT_WORKBENCH, MEMORY_NOTE, PLAN_NOTE } from './prompt.js'
 import { toolDefs, executeTool } from './tools.js'
 import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
+import { runSubAgent, subAgentLabel } from './subagent.js'
 
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
 const COMPACTION_KEEP = 24 // 压缩时保留最近的消息数
 const MODES = ['教学', '探索', '目标', '写作']
+// 管理 Agent 的工具集：规划/委派/知识网络/向用户提问——不亲自写内容与上网检索
+const MANAGER_TOOLS = ['delegate', 'ask_user', 'read_graph', 'update_graph', 'read_note', 'list_notes', 'search_knowledge']
 
 // ── 提问挂起（ask_user） ────────────────────────────────────────────────────
 
@@ -192,7 +195,7 @@ function apiConfig() {
   return { base: apiBaseURL.replace(/\/+$/, ''), apiKey, model }
 }
 
-export async function* streamChat({ messages, signal }) {
+export async function* streamChat({ messages, signal, tools = toolDefs }) {
   const { base, apiKey, model } = apiConfig()
   let received = false // 是否已向调用方流出内容：流出后不能静默重试（会重复输出）
   for (let attempt = 1; ; attempt++) {
@@ -207,7 +210,7 @@ export async function* streamChat({ messages, signal }) {
         body: JSON.stringify({
           model,
           messages,
-          tools: toolDefs,
+          tools: (tools ?? []).filter(Boolean), // 防御：稀疏数组空洞会被序列化成 null，严格网关直接 400
           stream: true,
           temperature: 0.7,
         }),
@@ -435,29 +438,55 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
     role: 'user',
     content: `【模式：${MODES.includes(mode) ? mode : '教学'}】${userMessage}${attachBlock}`,
   }
-  const messages = [
-    {
-      role: 'system',
-      content: buildSystemPrompt({
-        vaultPath: vault.getVaultRoot(),
-        graphSummary: graphSummary(),
-        memoryNote: readMemoryNote(),
-        planNote: readPlanNote(),
-        sessionSummary: summary,
-        turnCount: history.filter((m) => m.role === 'user').length + 1,
-      }),
-    },
-    ...history,
-    userEntry,
-  ]
+  // ── 路由 Agent：快问直答，学习任务交管理 Agent ──
+  const safeMode = MODES.includes(mode) ? mode : '教学'
+  emit({ type: 'agent-status', stage: 'thinking', message: '路由中…' })
+  let route = 'manage'
+  try {
+    const txt = await chatOnce(buildRouterMessages(userMessage, safeMode), { temperature: 0, maxTokens: 60 })
+    // 模型可能输出转义包裹的 JSON，直接关键词匹配最稳
+    if (/direct/.test(txt)) route = 'direct'
+    else if (/manage/.test(txt)) route = 'manage'
+  } catch {
+    /* 路由失败默认 manage */
+  }
 
+  let messages
+  if (route === 'direct') {
+    messages = buildDirectMessages(userMessage, safeMode)
+  } else {
+    messages = [
+      {
+        role: 'system',
+        content: buildManagerSystem({
+          vaultPath: vault.getVaultRoot(),
+          graphSummary: graphSummary(),
+          memoryNote: readMemoryNote(),
+          planNote: readPlanNote(),
+          sessionSummary: summary,
+          turnCount: history.filter((m) => m.role === 'user').length + 1,
+          mode: safeMode,
+        }),
+      },
+      ...history,
+      userEntry,
+    ]
+  }
   try {
     emit({ type: 'agent-status', stage: 'thinking', message: '正在思考…' })
     let wroteAny = false
     let finalText = ''
     const runUploads = [] // 本次运行中用户上传的文件（内容预览），后续提问自动附带展示
 
+    if (route === 'direct') {
+      // 快问直答：无工具流式回答，结尾由工作台兜底落档
+      emit({ type: 'agent-status', stage: 'thinking', message: '快速回答…' })
+      for await (const { delta } of streamChat({ messages, signal: abort.signal, tools: [] })) {
+        if (delta.content) finalText += delta.content
+      }
+    } else {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      emit({ type: 'agent-status', stage: 'thinking', message: '管理 Agent 规划与委派中…' })
       const assistant = { role: 'assistant', content: '', tool_calls: [] }
       const callAcc = new Map() // index -> {id, name, args}
       let lastStreamEmit = 0
@@ -473,6 +502,12 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
           finishReason = fr
           if (delta.content) {
             assistant.content += delta.content
+          }
+          // 思考模式（DeepSeek 等）：reasoning_content 必须累积并在下一轮回传，
+          // 否则带 tool_calls 的 assistant 消息回传时服务端返回 400
+          const reasoning = delta.reasoning_content ?? delta.reasoning
+          if (reasoning) {
+            assistant.reasoning_content = (assistant.reasoning_content || '') + reasoning
           }
           if (Array.isArray(delta.tool_calls)) {
             for (const tc of delta.tool_calls) {
@@ -532,11 +567,14 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
           type: 'function',
           function: { name: t.name, arguments: t.args },
         }))
-        messages.push({
+        const assistantEntry = {
           role: 'assistant',
           content: assistant.content || null,
           tool_calls: assistant.tool_calls,
-        })
+        }
+        // 思考模式要求把上轮 reasoning_content 原样回传
+        if (assistant.reasoning_content) assistantEntry.reasoning_content = assistant.reasoning_content
+        messages.push(assistantEntry)
         for (const tc of toolCalls) {
           emit({
             type: 'agent-status',
@@ -624,6 +662,28 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
               emit({ type: 'agent-write', path: rel, content, done: true })
               emit({ type: 'agent-status', stage: 'written', path: rel, message: '已写入 ' + rel })
             },
+            delegate: async (p) => {
+              emit({ type: 'agent-status', stage: 'tool', message: subAgentLabel(p.role) + ' 工作中：' + String(p.task || '').slice(0, 40) })
+              const r = await runSubAgent({
+                role: p.role,
+                task: p.task,
+                context: p.context || '',
+                emit,
+                signal: abort.signal,
+                streamChat,
+                executeTool,
+                hooks: {
+                  onWrite: (rel, content) => {
+                    currentRun?.writeActivity?.set(rel, Date.now())
+                    wroteAny = true
+                    emit({ type: 'agent-write', path: rel, content, done: true })
+                    emit({ type: 'agent-status', stage: 'written', path: rel, message: '已写入 ' + rel })
+                  },
+                },
+              })
+              emit({ type: 'agent-status', stage: 'tool', message: subAgentLabel(p.role) + ' 完成' })
+              return r.result
+            },
           })
           messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
         }
@@ -635,6 +695,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
       break
     }
 
+    }
     // 兜底：模型输出了纯文字但没写任何文件 → 自动落到工作台
     if (!wroteAny && finalText && finalText.trim()) {
       appendWorkbench(finalText.trim())

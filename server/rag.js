@@ -1,120 +1,82 @@
 // 本地 RAG：transformers.js(ONNX) 中英双语 embedding + 纯文件向量库 + 串行索引队列。
 // 索引来源：vault 内全部 md 笔记、PDF 文本（按页）、用户在 PDF 学习器里的标注与卡片。
 // 存储在 <vault>/.agent/rag/（index.json + vectors.bin），换 embedding 模型自动全量重索引。
+// 注意：ONNX 推理在 rag-worker.js 的 worker 线程执行——在主线程跑会把 HTTP 事件循环饿死。
 import fs from 'node:fs'
 import path from 'node:path'
+import { Worker } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import * as vault from './vault.js'
 import { loadSettings } from './settings.js'
 import { extractPdfPages } from './agent/pdf.js'
 import { loadDoc } from './pdfstudy.js'
+import { RAG_MODELS } from './rag-models.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const MODEL_CACHE_DIR = path.join(__dirname, '..', '.learn-agent', 'models')
-
-// ── 模型预设 ────────────────────────────────────────────────────────────────
-
-export const RAG_MODELS = {
-  'jina-v2-base-zh': {
-    id: 'Xenova/jina-embeddings-v2-base-zh',
-    dim: 768,
-    label: 'Jina v2 base zh（中英双语 · 推荐）',
-    queryPrefix: 'Query: ',
-    size: '~160MB',
-  },
-  'bge-m3': {
-    id: 'Xenova/bge-m3',
-    dim: 1024,
-    label: 'BGE-M3（最强多语 · 较慢）',
-    queryPrefix: '',
-    size: '~600MB',
-  },
-  'm-e5-small': {
-    id: 'Xenova/multilingual-e5-small',
-    dim: 384,
-    label: 'Multilingual E5 small（轻量）',
-    queryPrefix: 'query: ',
-    size: '~120MB',
-  },
-}
 
 export function currentModelKey() {
   const s = loadSettings()
   return RAG_MODELS[s.ragModel] ? s.ragModel : 'jina-v2-base-zh'
 }
 
-// ── embedding 管线（懒加载单例） ─────────────────────────────────────────────
+// ── embedding：worker 线程 RPC ───────────────────────────────────────────────
 
-let tf = null
-let extractor = null
-let extractorModel = ''
-let failModel = ''
-let failError = ''
+const workerPath = path.join(__dirname, 'rag-worker.js')
+let worker = null
+let rpcId = 0
+const rpcPending = new Map()
 
-async function getExtractor() {
-  const key = currentModelKey()
-  if (extractor && extractorModel === key) return extractor
-  if (failModel === key) throw new Error(failError)
-  if (!tf) {
-    tf = await import('@huggingface/transformers')
-    tf.env.cacheDir = MODEL_CACHE_DIR
-    tf.env.allowLocalModels = false
-  }
-  const cfg = RAG_MODELS[key]
-  state.status = 'loading'
-  state.model = key
-  state.downloadProgress = 0
-  const progress_callback = (p) => {
-    if (p.status === 'progress' && typeof p.file === 'string' && p.file.includes('model')) {
-      state.downloadProgress = Math.round(p.progress || 0)
+function ensureWorker() {
+  if (worker) return worker
+  worker = new Worker(workerPath)
+  worker.on('message', (m) => {
+    if (m?.type === 'status') {
+      if (m.status === 'loading') {
+        state.status = 'loading'
+        state.model = m.model
+        state.downloadProgress = m.downloadProgress ?? 0
+      } else if (m.status === 'progress') {
+        state.downloadProgress = m.downloadProgress ?? 0
+      } else if (m.status === 'ready') {
+        state.status = 'ready'
+        state.error = ''
+        state.downloadProgress = 100
+      } else if (m.status === 'error') {
+        state.status = 'error'
+        state.error = m.error || ''
+      }
+      return
     }
-  }
-  try {
-    try {
-      extractor = await tf.pipeline('feature-extraction', cfg.id, { dtype: 'q8', progress_callback })
-    } catch {
-      extractor = await tf.pipeline('feature-extraction', cfg.id, { progress_callback })
-    }
-    extractorModel = key
-    failModel = ''
-    failError = ''
-    state.status = 'ready'
-    state.error = ''
-    state.downloadProgress = 100
-    return extractor
-  } catch (e) {
-    failModel = key
-    failError = 'embedding 模型加载失败：' + String(e.message || e) + '（首次使用需联网下载模型，请检查网络/代理）'
-    state.status = 'error'
-    state.error = failError
-    throw new Error(failError)
-  }
+    const p = rpcPending.get(m?.id)
+    if (!p) return
+    rpcPending.delete(m.id)
+    if (m.error) p.reject(new Error(m.error))
+    else p.resolve(m.vectors)
+  })
+  worker.on('error', (e) => {
+    for (const p of rpcPending.values()) p.reject(e)
+    rpcPending.clear()
+    worker = null
+  })
+  worker.on('exit', () => {
+    worker = null
+  })
+  return worker
 }
 
-/** 文本数组 → 归一化向量数组 */
+/** 文本数组 → 归一化向量数组（推理在 worker 线程，不阻塞 HTTP） */
 async function embed(texts) {
-  const pipe = await getExtractor()
-  const out = []
-  const BATCH = 8
-  for (let i = 0; i < texts.length; i += BATCH) {
-    const batch = texts.slice(i, i + BATCH).map((t) => t.slice(0, 2000))
-    const res = await pipe(batch, { pooling: 'mean', normalize: true })
-    if (Array.isArray(res)) {
-      for (const t of res) out.push(Float32Array.from(t.data))
-    } else {
-      const dims = res.dims ?? []
-      const dim = dims[dims.length - 1] || Math.floor(res.data.length / batch.length)
-      for (let j = 0; j < batch.length; j++) {
-        out.push(Float32Array.from(res.data.slice(j * dim, (j + 1) * dim)))
-      }
-    }
-  }
-  return out
+  const w = ensureWorker()
+  const id = ++rpcId
+  return new Promise((resolve, reject) => {
+    rpcPending.set(id, { resolve, reject })
+    w.postMessage({ type: 'embed', id, texts: texts.map((t) => t.slice(0, 2000)), modelKey: currentModelKey() })
+  })
 }
 
 // ── 向量存储（<vault>/.agent/rag/） ──────────────────────────────────────────
 
-let store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0 }
+let store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0, files: {} }
 let storeLoaded = false
 let saveTimer = null
 
@@ -131,6 +93,7 @@ function loadStore() {
       store.dim = meta.dim || 0
       store.chunks = meta.chunks
       store.count = meta.chunks.length
+      store.files = meta.files && typeof meta.files === 'object' ? meta.files : {}
       const bin = path.join(ragDir(), 'vectors.bin')
       if (fs.existsSync(bin) && store.dim > 0 && store.count > 0) {
         const buf = fs.readFileSync(bin)
@@ -140,7 +103,7 @@ function loadStore() {
       if (!store.vectors) store.vectors = new Float32Array(store.count * store.dim)
     }
   } catch {
-    store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0 }
+    store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0, files: {} }
   }
 }
 
@@ -151,7 +114,7 @@ function saveStore() {
       const dir = ragDir()
       fs.mkdirSync(dir, { recursive: true })
       const tmpJson = path.join(dir, 'index.json.tmp')
-      fs.writeFileSync(tmpJson, JSON.stringify({ model: store.model, dim: store.dim, chunks: store.chunks }, null, 1), 'utf8')
+      fs.writeFileSync(tmpJson, JSON.stringify({ model: store.model, dim: store.dim, chunks: store.chunks, files: store.files }, null, 1), 'utf8')
       fs.renameSync(tmpJson, path.join(dir, 'index.json'))
       if (store.vectors && store.count > 0 && store.dim > 0) {
         const buf = Buffer.from(store.vectors.buffer, store.vectors.byteOffset, store.count * store.dim * 4)
@@ -194,6 +157,8 @@ function replaceChunksForPath(rel, newChunks, newVectors) {
 function removeChunksForPath(rel) {
   if (!store.chunks.some((c) => c.path === rel)) return
   replaceChunksForPath(rel, [], [])
+  delete store.files[rel]
+  saveStore()
 }
 
 // ── 分块 ────────────────────────────────────────────────────────────────────
@@ -345,7 +310,7 @@ async function drain() {
     }
   } finally {
     draining = false
-    if (state.status === 'loading') state.status = extractor ? 'ready' : state.status
+    if (state.status === 'loading') state.status = 'ready'
   }
 }
 
@@ -364,18 +329,26 @@ async function indexFile(rel) {
   if (!/\.md$|\.pdf$/i.test(rel)) return
   const stat = fileStat(rel)
   if (!stat) return
-  const prev = mtimeCache.get(rel)
+  // 跨重启也生效的指纹：文件与上次索引时完全一致就跳过（否则每次重启都重推全库）
+  const known = mtimeCache.get(rel) ?? store.files[rel] ?? null
   const hasChunks = store.chunks.some((c) => c.path === rel)
-  if (prev && prev.mtimeMs === stat.mtimeMs && prev.size === stat.size && hasChunks) return // 未变化
+  if (known && known.mtimeMs === stat.mtimeMs && known.size === stat.size && hasChunks) {
+    mtimeCache.set(rel, stat)
+    return
+  }
   const specs = await chunkSpecsFor(rel)
   if (!specs.length) {
     if (hasChunks) removeChunksForPath(rel)
     mtimeCache.set(rel, stat)
+    store.files[rel] = { mtimeMs: stat.mtimeMs, size: stat.size }
+    saveStore()
     return
   }
   const vectors = await embed(specs.map((s) => s.text))
   replaceChunksForPath(rel, specs, vectors)
   mtimeCache.set(rel, stat)
+  store.files[rel] = { mtimeMs: stat.mtimeMs, size: stat.size }
+  saveStore()
 }
 
 /** 全量扫描入库 */
@@ -388,10 +361,9 @@ export async function reindexAll() {
   state.queue = []
   for (const t of pendingTimers.values()) clearTimeout(t)
   pendingTimers.clear()
-  store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0 }
+  store = { model: '', dim: 0, chunks: [], vectors: new Float32Array(0), count: 0, files: {} }
   mtimeCache.clear()
   saveStore()
-  await getExtractor().catch(() => undefined)
   await fullScan()
 }
 
