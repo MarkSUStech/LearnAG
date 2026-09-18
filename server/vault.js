@@ -28,6 +28,8 @@ export function resolveInVault(relPath) {
 // ── 文件树 ──────────────────────────────────────────────────────────────────
 
 const IGNORED_DIRS = new Set(['.obsidian', '.agent', '.git', '.trash', 'node_modules', '.learn-agent'])
+// 引擎桥接配置（ZCode MCP 挂载），不进文件树/监听
+const IGNORED_FILES = new Set(['.mcp.json'])
 
 /** IDE 模式关注的文本/代码扩展名：文件树 all 模式、watcher、全局搜索共用 */
 export const TEXT_EXTS = new Set([
@@ -69,6 +71,7 @@ function buildTree(absDir, relDir = '', all = false) {
   const includeAll = all || segs[0] === '资料' || segs[0] === '附件' || segs.includes('reference') || segs.includes('papers') || segs.includes('web')
   for (const ent of entries) {
     if (ent.name.startsWith('.') && IGNORED_DIRS.has(ent.name)) continue
+    if (IGNORED_FILES.has(ent.name)) continue
     const rel = relDir ? relDir + '/' + ent.name : ent.name
     if (ent.isDirectory()) {
       out.push({
@@ -237,6 +240,7 @@ function startWatcher() {
     ignored: (p, stats) => {
       const rel = path.relative(vaultRoot, p)
       if (!rel) return false
+      if (IGNORED_FILES.has(rel) || IGNORED_FILES.has(path.basename(rel))) return true
       const first = rel.split(path.sep)[0]
       if (IGNORED_DIRS.has(first)) return true
       // 目录不能剪枝，否则递归监听失效（关心 md、pdf、代码/文本文件与 知识图谱.json）

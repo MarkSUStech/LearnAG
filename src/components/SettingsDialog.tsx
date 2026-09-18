@@ -175,7 +175,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
             </select>
             <div className="hint">
               {engine === 'zcode'
-                ? '学习任务交给本机 ZCode 智能体：直接读写知识库、联网查证、写笔记；凭据复用桌面版 ZCode 登录，无需 API Key。答疑/翻译/图表修复同步切换'
+                ? '学习任务交给本机 ZCode 智能体：直接读写知识库、联网查证、写笔记，也能通过提问卡片向你出题；凭据复用桌面版 ZCode 登录，无需 API Key。答疑/翻译/图表修复同步切换'
                 : '所有 AI 功能走下方配置的 OpenAI 兼容服务'}
             </div>
           </div>

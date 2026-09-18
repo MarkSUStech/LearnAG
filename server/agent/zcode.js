@@ -10,9 +10,42 @@
 // - 终止行：{type:'result', sessionId, response, usage, projection}
 // 未文档化面，CLI 随桌面版更新可能变化：解析对未知事件宽容跳过，原始事件前 200 行落盘 zcode-sample.log 便于适配。
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { loadSettings, defaultZcodePath, dataDir } from '../settings.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/** 把 LearnAgent 桥接（ask_user / search_knowledge）写入 ZCode 原生配置 mcp.servers
+ *  （~/.zcode/cli/config.json；--settings 与工作目录 .mcp.json 在 v0.16.5 的严格解析器
+ *  下均不可用）。保留配置中其他键；每次 ZCode 引擎运行前同步一次（脚本路径/端口可能变化）。 */
+export function ensureZcodeMcp() {
+  try {
+    const cfgPath = path.join(os.homedir(), '.zcode', 'cli', 'config.json')
+    let cfg = {}
+    try {
+      cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'))
+    } catch {
+      /* 首次创建 */
+    }
+    cfg.mcp = cfg.mcp && typeof cfg.mcp === 'object' ? cfg.mcp : {}
+    cfg.mcp.servers = cfg.mcp.servers && typeof cfg.mcp.servers === 'object' ? cfg.mcp.servers : {}
+    cfg.mcp.servers.learnagent = {
+      type: 'stdio',
+      command: process.execPath,
+      args: [path.join(__dirname, '..', 'zcode-mcp.mjs')],
+      env: { LEARN_AGENT_PORT: String(process.env.PORT || 3001) },
+    }
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf8')
+    return cfgPath
+  } catch (e) {
+    console.error('[zcode] 写入 ZCode 配置失败:', e?.message || e)
+    return ''
+  }
+}
 
 export function zcodeCliPath() {
   const s = loadSettings()

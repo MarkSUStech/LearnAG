@@ -8,7 +8,7 @@ import { toolDefs, executeTool } from './tools.js'
 import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
 import { runSubAgent, subAgentLabel } from './subagent.js'
-import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId } from './zcode.js'
+import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId, ensureZcodeMcp } from './zcode.js'
 
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
@@ -389,6 +389,59 @@ export function isRunning() {
   return Boolean(currentRun)
 }
 
+/** 当前任务的 abort signal（ZCode MCP 桥接的 ask_user 挂起随停止而取消） */
+export function activeRunSignal() {
+  return currentRun?.controller?.signal ?? null
+}
+
+/**
+ * 发出提问卡片并挂起等待用户作答（API 模式 ask_user 工具与 ZCode MCP ask_user 共用）。
+ * 回答会记录到工作台并关闭卡片。answer: {value}|{files}|{cancelled}|{skipped}
+ */
+export async function suspendForQuestion({ emit, args = {}, signal, contextFiles = [] }) {
+  let qType = ['single', 'multi', 'judge', 'text', 'file'].includes(args.type) ? args.type : 'text'
+  let options = Array.isArray(args.options)
+    ? args.options
+        .map((o) => (typeof o === 'string' ? o : String(o?.label ?? o?.text ?? o?.value ?? JSON.stringify(o))))
+        .filter(Boolean)
+        .slice(0, 8)
+    : []
+  if ((qType === 'single' || qType === 'multi') && options.length < 2) {
+    qType = 'text' // 兜底：没有选项降级为简答
+    options = []
+  }
+  const id = 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
+  const question = String(args.question ?? '').slice(0, 2000)
+  console.log('[agent] ask_user 挂起', id, qType)
+  const answer = await new Promise((resolve) => {
+    const questionEvent = {
+      type: 'agent-question',
+      id,
+      question,
+      qType,
+      options,
+      allowCustom: args.allowCustom !== false,
+      fileHint: String(args.fileHint ?? ''),
+      fileMultiple: Boolean(args.fileMultiple),
+      code: String(args.code ?? '').slice(0, 4000),
+      contextFiles,
+    }
+    pendingQuestion = { id, resolve, event: questionEvent }
+    const onAbort = () => {
+      if (pendingQuestion?.id === id) {
+        pendingQuestion = null
+        resolve({ cancelled: true })
+      }
+    }
+    signal?.addEventListener?.('abort', onAbort, { once: true })
+    emit(questionEvent)
+  })
+  console.log('[agent] ask_user 收到回答:', JSON.stringify(answer).slice(0, 100))
+  appendWorkbench(`**问**：${question}\n\n**答**：${formatAnswer(answer)}`)
+  emit({ type: 'agent-question-closed', id })
+  return answer
+}
+
 function safeParse(s) {
   try {
     return JSON.parse(s)
@@ -465,9 +518,11 @@ function buildZcodePrompt({ userMessage, mode, attachments }) {
 
 ## 工作纪律
 - 笔记要详实完整：概念、推导、例子、易错点、自测题都应覆盖，宁可长而透，不要薄而空。图用 mermaid，语法不要混用（例如 Note over 只能出现在 sequenceDiagram 中）
-- 不要向用户提问：本模式没有提问通道。缺信息时按最合理假设继续，或用联网检索工具自行查证
+- 需要向用户提问（摸底测评、出题检查掌握程度、候选路径选择）时，用 ask_user 工具：用户会在界面上看到提问卡片并作答，工具结果就是用户的回答（answer.value；被跳过/取消也要得体处理）。每次只问一个问题；题目涉及用户看不到的内容时放进 code 参数
+- 出题测评纪律：一道一问，跨层级搭配（概念判断 judge → 识记 single → 理解/应用 text）；「不会就是不会」——答错或答「不会」只简短确认并记录薄弱点，立即下一题，测评环节不讲解；所有题型用户都可能自定义回答，按内容严肃判定，空洞/抄题面视为未通过
+- 写笔记前先用 search_knowledge 语义检索知识库（覆盖笔记、PDF 原文与用户标注/卡片），衔接用户已有知识与资料；也可以直接 Glob/Grep/Read 文件
 - 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
-- 不要修改 .obsidian、.agent 目录与 Agent/工作台.md（工作台由系统写入）
+- 不要修改 .obsidian、.agent 与 Agent/工作台.md（工作台由系统写入）
 - 只操作上述 vault 内的文件，不要动用户电脑上的其他东西
 
 ## 当前任务
@@ -552,6 +607,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] 
 
   try {
     emit({ type: 'agent-status', stage: 'thinking', message: 'ZCode 引擎启动中…' })
+    ensureZcodeMcp() // 桥接工具（ask_user / search_knowledge）挂载配置
     const prompt = buildZcodePrompt({ userMessage, mode, attachments })
     const maxTurns = settings.zcodeMaxTurns || 30
     const resume = getZcodeSessionId(sessionId)
@@ -768,74 +824,35 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
           const args = safeParse(tc.args) ?? {}
 
           if (tc.name === 'ask_user') {
-            // 结构化提问：挂起等用户作答
+            // 结构化提问：挂起等用户作答（卡片/停止/自定义回答共用逻辑见 suspendForQuestion）
             try {
-              console.log('[agent] ask_user 分支进入, args:', JSON.stringify(args).slice(0, 200))
-              let qType = ['single', 'multi', 'judge', 'text', 'file'].includes(args.type) ? args.type : 'text'
-              let options = Array.isArray(args.options)
-                ? args.options
-                    .map((o) =>
-                      typeof o === 'string'
-                        ? o
-                        : String(o?.label ?? o?.text ?? o?.value ?? JSON.stringify(o)),
-                    )
-                    .filter(Boolean)
-                    .slice(0, 8)
-                : []
-              if ((qType === 'single' || qType === 'multi') && options.length < 2) {
-                qType = 'text' // 兜底：没有选项降级为简答
-                options = []
-              }
-              const id = 'q-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
-              const question = String(args.question ?? '').slice(0, 2000)
-              console.log('[agent] ask_user 准备挂起', id, qType)
-              const answer = await new Promise((resolve) => {
-                const questionEvent = {
-                  type: 'agent-question',
-                  id,
-                  question,
-                  qType,
-                  options,
-                  allowCustom: args.allowCustom !== false,
-                  fileHint: String(args.fileHint ?? ''),
-                  fileMultiple: Boolean(args.fileMultiple),
-                  code: String(args.code ?? '').slice(0, 4000),
-                  // 自动附带本轮用户上传过的文件内容，保证用户能看到被讨论的代码
-                  contextFiles: runUploads.map((u) => ({ path: u.path, name: u.name, content: u.content })),
-                }
-                pendingQuestion = { id, resolve, event: questionEvent }
-                const onAbort = () => {
-                  if (pendingQuestion?.id === id) {
-                    pendingQuestion = null
-                    resolve({ cancelled: true })
-                  }
-                }
-                abort.signal.addEventListener('abort', onAbort, { once: true })
-                emit(questionEvent)
+              const answer = await suspendForQuestion({
+                emit,
+                args,
+                signal: abort.signal,
+                // 自动附带本轮用户上传过的文件内容，保证用户能看到被讨论的代码
+                contextFiles: runUploads.map((u) => ({ path: u.path, name: u.name, content: u.content })),
               })
-              console.log('[agent] ask_user 收到回答:', JSON.stringify(answer).slice(0, 100))
               // 记录本轮上传的文件（含内容预览），供后续提问展示
               if (answer && Array.isArray(answer.files)) {
                 for (const f of answer.files) {
                   runUploads.push({ path: f.path, name: f.name, content: f.preview?.content ?? '' })
                 }
               }
-            appendWorkbench(`**问**：${question}\n\n**答**：${formatAnswer(answer)}`)
-            emit({ type: 'agent-question-closed', id })
-            messages.push({
-              role: 'tool',
-              tool_call_id: tc.id,
-              content: JSON.stringify(answer),
-            })
-            continue
-          } catch (e) {
-            console.error('[agent] ask_user 分支异常', e)
-            messages.push({
-              role: 'tool',
-              tool_call_id: tc.id,
-              content: JSON.stringify({ error: String(e?.message || e) }),
-            })
-          }
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify(answer),
+              })
+              continue
+            } catch (e) {
+              console.error('[agent] ask_user 分支异常', e)
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify({ error: String(e?.message || e) }),
+              })
+            }
           }
 
           const result = await executeTool(tc.name, args, {

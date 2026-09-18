@@ -52,9 +52,10 @@ npm start          # 构建前端并由服务端托管，访问 http://127.0.0.1
 
 - ZCode 以知识库根目录为工作区，用自带文件工具直接读写笔记、联网查证、绘制 mermaid 图，最终回复落到 `Agent/工作台.md`
 - 知识网络纪律以内置提示词注入：`知识图谱/*.md` 带规范 frontmatter 会被自动同步进 `知识图谱.json`（服务端监听，外部写入同样生效）
+- **提问卡片与语义检索**：通过 MCP 桥接（`server/zcode-mcp.mjs`）提供 `ask_user` / `search_knowledge` 两个工具——出题测评、摸底提问走和 API 模式同一套提问卡片；首次启用时会把该桥接写入 ZCode 原生配置（`~/.zcode/cli/config.json` 的 `mcp.servers.learnagent`），桌面版 ZCode 中也会出现这两个工具，属正常现象。用户 6 分钟未作答则超时，ZCode 按最合理假设继续
 - 跨请求记忆：通过 `--resume` 续接 ZCode 会话（映射存于 `.learn-agent/zcode-sessions.json`）
 - 答疑、翻译、图表修复同步切换；CLI 缺失时自动回落 API 引擎
-- 注意：ZCode 模式没有提问卡片通道（agent 不会中途向你提问）；CLI 随桌面版更新，路径可在设置中手动指定
+- 注意：CLI 随桌面版更新，路径可在设置中手动指定
 
 ## 知识图谱格式（知识图谱.json）
 

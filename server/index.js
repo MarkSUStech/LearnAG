@@ -10,6 +10,8 @@ import {
   runZcodeAgent,
   stopAgent,
   isRunning,
+  activeRunSignal,
+  suspendForQuestion,
   testConnection,
   resolvePendingAnswer,
   replayPendingQuestion,
@@ -21,7 +23,7 @@ import {
   renameSessionApi,
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
-import { zcodeAvailable, zcodeCliPath, zcodeVersion } from './agent/zcode.js'
+import { zcodeAvailable, zcodeCliPath, zcodeVersion, ensureZcodeMcp } from './agent/zcode.js'
 import { syncNoteToGraph } from './agent/tools.js'
 import { renderDiagram } from './render.js'
 import { streamChat } from './agent/runner.js'
@@ -187,6 +189,7 @@ app.put('/api/settings', (req, res) => {
     const prevVault = loadSettings().vaultPath
     const prevRagModel = loadSettings().ragModel
     const next = saveSettings(patch)
+    if (next.engine === 'zcode') ensureZcodeMcp() // 提前挂载桥接工具配置
     if (path.resolve(next.vaultPath) !== path.resolve(prevVault)) {
       initVault()
       emit({ type: 'vault-changed', vaultPath: next.vaultPath })
@@ -384,6 +387,31 @@ app.post('/api/agent/answer', (req, res) => {
   const ok = resolvePendingAnswer(id, value)
   if (!ok) return res.status(404).json({ error: '问题不存在或已回答' })
   res.json({ ok: true })
+})
+
+// ── ZCode 引擎桥接回调（本机 MCP 桥接进程 → 主服务，仅 localhost） ───────────
+
+// ask_user：发出提问卡片并挂起等待作答（与 API 模式同一套卡片/停止/自定义回答机制）
+app.post('/internal/zcode/ask', async (req, res) => {
+  if (!isRunning()) return res.status(409).json({ error: '当前没有进行中的任务' })
+  try {
+    const answer = await suspendForQuestion({ emit, args: req.body ?? {}, signal: activeRunSignal() })
+    res.json(answer ?? { value: '' })
+  } catch (e) {
+    console.error('[zcode-mcp] ask 挂起失败:', e?.stack || e)
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+// search_knowledge：本地 RAG 语义检索
+app.post('/internal/zcode/search', async (req, res) => {
+  try {
+    const q = String(req.body?.query ?? '').trim()
+    if (!q) return res.status(400).json({ error: 'query 不能为空' })
+    res.json(await rag.search(q, Math.min(12, Number(req.body?.max_results) || 6)))
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
 })
 
 // ── 会话 ────────────────────────────────────────────────────────────────────
