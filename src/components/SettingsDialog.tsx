@@ -19,6 +19,9 @@ const RAG_MODELS = [
 
 export default function SettingsDialog({ settings, appearance, onAppearanceChange, onClose, onSaved }: Props) {
   const [vaultPath, setVaultPath] = useState(settings.vaultPath)
+  const [engine, setEngine] = useState<'api' | 'zcode'>(settings.engine === 'zcode' ? 'zcode' : 'api')
+  const [zcodePath, setZcodePath] = useState(settings.zcodePath || '')
+  const [zcodeInfo, setZcodeInfo] = useState<{ found: boolean; version: string; path: string } | null>(null)
   const [baseURL, setBaseURL] = useState(settings.apiBaseURL)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(settings.model)
@@ -28,6 +31,23 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // ZCode CLI 探测（对话框打开期间 + 路径变化时）
+  useEffect(() => {
+    if (engine !== 'zcode') return
+    let alive = true
+    const tick = () =>
+      api
+        .zcodeStatus()
+        .then((s) => alive && setZcodeInfo(s))
+        .catch(() => undefined)
+    tick()
+    const timer = setInterval(tick, 4000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [engine, zcodePath])
 
   // RAG 状态轮询（对话框打开期间）
   useEffect(() => {
@@ -56,7 +76,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
   async function save() {
     setSaving(true)
     try {
-      const patch: Record<string, string> = { vaultPath, apiBaseURL: baseURL, model, ragModel }
+      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, ragModel, engine, zcodePath: zcodePath.trim() }
       if (apiKey.trim()) patch.apiKey = apiKey.trim()
       const s = await api.saveSettings(patch)
       onSaved(s)
@@ -73,11 +93,11 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
     setTestResult(null)
     try {
       // 先保存再测试，保证测的是当前填写的配置
-      const patch: Record<string, string> = { vaultPath, apiBaseURL: baseURL, model }
+      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, engine, zcodePath: zcodePath.trim() }
       if (apiKey.trim()) patch.apiKey = apiKey.trim()
       await api.saveSettings(patch)
       const r = await api.testConnection()
-      setTestResult({ ok: true, text: `连接成功，模型已响应：${r.reply.slice(0, 30)}` })
+      setTestResult({ ok: true, text: `连接成功：${r.reply.slice(0, 40)}` })
     } catch (e) {
       setTestResult({ ok: false, text: (e as Error).message })
     } finally {
@@ -137,7 +157,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
               </select>
             </div>
           </div>
-          <div className="section-title">AI 服务与知识库</div>
+          <div className="section-title">AI 引擎与知识库</div>
           <div className="field">
             <label>知识库（vault）路径</label>
             <input
@@ -148,7 +168,43 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
             <div className="hint">本地任意文件夹，兼容 Obsidian Vault；目录需已存在，切换后立即生效</div>
           </div>
           <div className="field">
-            <label>AI 服务（OpenAI 兼容）Base URL</label>
+            <label>AI 引擎</label>
+            <select value={engine} onChange={(e) => setEngine(e.target.value as 'api' | 'zcode')}>
+              <option value="api">API 服务（OpenAI 兼容）</option>
+              <option value="zcode">ZCode（本机智能体，走你的账号额度）</option>
+            </select>
+            <div className="hint">
+              {engine === 'zcode'
+                ? '学习任务交给本机 ZCode 智能体：直接读写知识库、联网查证、写笔记；凭据复用桌面版 ZCode 登录，无需 API Key。答疑/翻译/图表修复同步切换'
+                : '所有 AI 功能走下方配置的 OpenAI 兼容服务'}
+            </div>
+          </div>
+          {engine === 'zcode' && (
+            <>
+              <div className="field">
+                <label>ZCode CLI 状态</label>
+                <div className="rag-status">
+                  <span className={`rag-dot ${zcodeInfo?.found ? 'ready' : 'error'}`} />
+                  <span>
+                    {zcodeInfo == null
+                      ? '探测中…'
+                      : zcodeInfo.found
+                        ? `已找到${zcodeInfo.version ? ' · v' + zcodeInfo.version : ''}`
+                        : '未找到，请检查路径或安装桌面版 ZCode'}
+                  </span>
+                </div>
+                <div className="hint" style={{ wordBreak: 'break-all' }}>
+                  {zcodeInfo?.path || ''}
+                </div>
+              </div>
+              <div className="field">
+                <label>ZCode CLI 路径（留空自动探测桌面版内置内核）</label>
+                <input value={zcodePath} onChange={(e) => setZcodePath(e.target.value)} placeholder={settings.zcodeAutoPath} />
+              </div>
+            </>
+          )}
+          <div className="field">
+            <label>API 服务{engine === 'zcode' ? '（后备引擎）Base URL' : '（OpenAI 兼容）Base URL'}</label>
             <input
               value={baseURL}
               onChange={(e) => setBaseURL(e.target.value)}

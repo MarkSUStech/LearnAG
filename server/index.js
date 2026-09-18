@@ -7,6 +7,7 @@ import * as vault from './vault.js'
 import { readGraph } from './graph.js'
 import {
   runAgent,
+  runZcodeAgent,
   stopAgent,
   isRunning,
   testConnection,
@@ -20,6 +21,8 @@ import {
   renameSessionApi,
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
+import { zcodeAvailable, zcodeCliPath, zcodeVersion } from './agent/zcode.js'
+import { syncNoteToGraph } from './agent/tools.js'
 import { renderDiagram } from './render.js'
 import { streamChat } from './agent/runner.js'
 import { reportMermaidFailure } from './agent/mermaidfix.js'
@@ -144,6 +147,14 @@ vault.watchVault((evt) => {
   if (evt.path === '知识图谱.json' && evt.kind !== 'unlink') {
     emit({ type: 'graph-changed' })
   }
+  // 知识图谱目录的笔记被外部写入（如 ZCode 引擎直接写文件）→ 自动同步进图谱
+  if (evt.kind !== 'unlink' && /^知识图谱\/.+\.md$/i.test(String(evt.path || ''))) {
+    try {
+      syncNoteToGraph(evt.path, vault.readFile(evt.path))
+    } catch {
+      /* frontmatter 不规范等情况静默跳过 */
+    }
+  }
   // RAG 索引联动：md/pdf 新增或变化入队，删除即清除
   const p = String(evt.path || '')
   if (/\.md$/i.test(p)) {
@@ -192,10 +203,27 @@ app.put('/api/settings', (req, res) => {
 
 app.post('/api/settings/test', async (req, res) => {
   try {
+    // ZCode 引擎：测的是本机 CLI 可用性（不发起模型调用）
+    if (loadSettings().engine === 'zcode') {
+      if (!zcodeAvailable()) throw new Error('未找到 ZCode CLI（' + zcodeCliPath() + '）')
+      const v = await zcodeVersion()
+      return res.json({ ok: true, reply: `ZCode 引擎就绪（CLI v${v || '?'}）` })
+    }
     const r = await testConnection()
     res.json(r)
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+// ZCode 引擎状态（设置页探测）
+app.get('/api/zcode/status', async (req, res) => {
+  try {
+    const found = zcodeAvailable()
+    const version = found ? await zcodeVersion() : ''
+    res.json({ found, version, path: zcodeCliPath() })
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
   }
 })
 
@@ -321,7 +349,14 @@ app.post('/api/agent', async (req, res) => {
     }
     return null
   }
-  runAgent({
+  // 引擎选择：设置里选了 ZCode 且本机 CLI 可用 → 整个任务交给 ZCode 无头执行；
+  // CLI 缺失则回落 API 引擎并提示
+  const useZcode = loadSettings().engine === 'zcode'
+  if (useZcode && !zcodeAvailable()) {
+    emit({ type: 'agent-status', stage: 'thinking', message: '未找到 ZCode CLI，本次回落 API 引擎' })
+  }
+  const run = useZcode && zcodeAvailable() ? runZcodeAgent : runAgent
+  run({
     emit,
     userMessage: message.trim(),
     mode: typeof mode === 'string' ? mode : '教学',
@@ -629,6 +664,18 @@ app.get('/api/pdf-study/asset/:key/:file', (req, res) => {
 app.get('/api/rag/status', (req, res) => {
   try {
     res.json(rag.status())
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+// 语义检索（引用角标点击打开来源文件等场景复用）
+app.get('/api/rag/search', async (req, res) => {
+  try {
+    const q = String(req.query.query ?? req.query.q ?? '').trim()
+    if (!q) return res.status(400).json({ error: 'query 不能为空' })
+    const k = Math.min(12, Number(req.query.k) || 6)
+    res.json(await rag.search(q, k))
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }

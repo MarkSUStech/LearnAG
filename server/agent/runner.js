@@ -8,6 +8,7 @@ import { toolDefs, executeTool } from './tools.js'
 import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
 import { runSubAgent, subAgentLabel } from './subagent.js'
+import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId } from './zcode.js'
 
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
@@ -195,7 +196,27 @@ function apiConfig() {
   return { base: apiBaseURL.replace(/\/+$/, ''), apiKey, model }
 }
 
+function usingZcode() {
+  return loadSettings().engine === 'zcode' && zcodeAvailable()
+}
+
+/** OpenAI messages 数组 → ZCode 单轮提示词（纯文本辅助任务：直答/压缩/翻译/修复） */
+function messagesToPrompt(messages) {
+  const roleTag = { system: '背景与要求', user: '任务', assistant: '你此前的回复' }
+  const body = messages
+    .map((m) => `【${roleTag[m.role] || m.role}】\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')}`)
+    .join('\n\n')
+  return body + '\n\n【输出要求】直接以文本回答（markdown），不要调用任何工具，不要读写任何文件。'
+}
+
 export async function* streamChat({ messages, signal, tools = toolDefs }) {
+  // ZCode 引擎：无工具直答流式（主智能体在 zcode 模式下不走本函数的工具循环）
+  if (usingZcode()) {
+    for await (const text of zcodeStreamText(messagesToPrompt(messages), { signal })) {
+      yield { delta: { content: text }, finishReason: undefined }
+    }
+    return
+  }
   const { base, apiKey, model } = apiConfig()
   let received = false // 是否已向调用方流出内容：流出后不能静默重试（会重复输出）
   for (let attempt = 1; ; attempt++) {
@@ -276,6 +297,10 @@ export async function* streamChat({ messages, signal, tools = toolDefs }) {
 
 /** 非流式单次调用（历史压缩、mermaid 修复等辅助任务） */
 export async function chatOnce(messages, opts = {}) {
+  // ZCode 引擎：单轮无头问答（无工具、纯文本回复）
+  if (usingZcode()) {
+    return zcodeChatOnce(messagesToPrompt(messages))
+  }
   const { base, apiKey, model } = apiConfig()
   return withRetry(
     async () => {
@@ -396,6 +421,181 @@ function formatAnswer(answer) {
   return String(answer.value ?? '')
 }
 
+/** 附件上下文块（API / ZCode 引擎共用） */
+function buildAttachBlock(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length) return ''
+  return (
+    '\n【附带资料】（[重点]=笔记核心依据；[次要]=补充对照）\n' +
+    attachments
+      .map((a) => {
+        const role = a.primary === false ? '[次要]' : '[重点]'
+        const sc = a.scope || {}
+        const parts = []
+        if (sc.chapter) parts.push(`章节「${sc.chapter}」`)
+        if (sc.from || sc.to) parts.push(`第 ${sc.from ?? '?'}–${sc.to ?? '?'} 页`)
+        const scopeText = parts.length
+          ? '建议范围：' + parts.join('，')
+          : '建议范围：未指定（先定位相关章节/页码，禁止全文读入）'
+        return `- ${role} ${a.path} ｜ ${scopeText}`
+      })
+      .join('\n') +
+    '\n'
+  )
+}
+
+// ── ZCode 引擎：主智能体（本机 ZCode CLI 全权执行） ─────────────────────────
+
+const ZCODE_MODE_HINT = {
+  教学: '以教会用户为目标：先摸底评估已掌握程度（依据知识图谱与已有笔记），再讲解与出题练习，并把掌握度变化写进知识网络。',
+  探索: '用户在自由探索：答疑、推荐、延伸皆可，有价值的新知识点顺手沉淀进知识网络。',
+  目标: '对齐 Agent/目标与计划.md 推进目标：拆解、执行、更新计划进度与知识网络。',
+  写作: '基于附带资料撰写或完善笔记：先读资料相关部分，引用落到具体文件与页码/章节。',
+}
+
+function buildZcodePrompt({ userMessage, mode, attachments }) {
+  const safeMode = MODES.includes(mode) ? mode : '教学'
+  return `你是用户本机的学习智能体。当前工作目录就是用户的知识库（Obsidian vault）根目录，你的所有读写都发生在其中。
+
+## 目录约定
+- 笔记/<领域>/<知识点>/note/ ：讲解类笔记
+- 知识图谱/<知识点>.md ：知识点主笔记。frontmatter 必须含 id（英文 kebab-case）、tags（首个为领域）、mastery（0~10）、status（mastered/learning/learnable）、related（[[相关知识点标题]] 列表，可选）、date；该目录的文件变化会被系统自动同步进知识图谱.json
+- 知识图谱.json ：知识网络主档案（节点 id/title/field/mastery/status/note + 边 depends-on/leads-to/relates-to）。需要更新时先 Read 再 Edit，保持 JSON 合法
+- 资料/ ：课程 PDF、论文（reference/papers/）、网页存档（reference/web/）
+- Agent/记忆.md、Agent/目标与计划.md ：若存在先读——里面是用户的长期记忆、目标与计划进度，主动衔接，不要让用户重复说过的话
+
+## 工作纪律
+- 笔记要详实完整：概念、推导、例子、易错点、自测题都应覆盖，宁可长而透，不要薄而空。图用 mermaid，语法不要混用（例如 Note over 只能出现在 sequenceDiagram 中）
+- 不要向用户提问：本模式没有提问通道。缺信息时按最合理假设继续，或用联网检索工具自行查证
+- 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
+- 不要修改 .obsidian、.agent 目录与 Agent/工作台.md（工作台由系统写入）
+- 只操作上述 vault 内的文件，不要动用户电脑上的其他东西
+
+## 当前任务
+模式：【${safeMode}】${ZCODE_MODE_HINT[safeMode] || ''}
+用户消息：
+${userMessage}${buildAttachBlock(attachments)}
+完成后，最后用一段简短的中文总结回复（做了什么、新写了/修改了哪些文件、下一步建议），不要把笔记全文粘进回复。`
+}
+
+/** 绝对路径 → vault 相对路径（越出 vault 返回 null） */
+function relFromVault(absPath) {
+  try {
+    const rel = path.relative(vault.getVaultRoot(), absPath)
+    if (!rel || rel.startsWith('..')) return null
+    return rel.replace(/\\/g, '/')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * ZCode 引擎的主智能体：整个任务交给本机 ZCode CLI 无头执行，
+ * 事件流映射回 LearnAgent 的 SSE 协议（agent-status / agent-write / agent-done）。
+ */
+export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] }) {
+  if (currentRun) throw new Error('已有任务在进行中')
+  if (!zcodeAvailable()) throw new Error('未找到本机 ZCode CLI，请在设置中检查路径，或切回 API 引擎')
+  const abort = new AbortController()
+  currentRun = { controller: abort, writeActivity: new Map() }
+  const settings = loadSettings()
+  const sessionId = sessions.ensureActive()
+
+  const ZCODE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+  const state = { reply: '', lastStreamEmit: 0, pendingFiles: new Map() }
+  const onEvent = (e) => {
+    if (e.type === 'text-delta') {
+      state.reply += e.text
+      const now = Date.now()
+      if (now - state.lastStreamEmit > 300) {
+        state.lastStreamEmit = now
+        emit({ type: 'agent-write', path: AGENT_WORKBENCH, content: state.reply, done: false })
+      }
+      return
+    }
+    if (e.type === 'tool-start') {
+      const fp = String(e.input?.file_path || '')
+      const rel = fp && ZCODE_WRITE_TOOLS.has(e.name) ? relFromVault(fp) : null
+      if (rel && /\.md$/i.test(rel)) {
+        state.pendingFiles.set(e.callId, rel)
+        if (typeof e.input?.content === 'string') {
+          // Write：参数里带全文，先流式预览
+          currentRun?.writeActivity?.set(rel, Date.now())
+          emit({ type: 'agent-write', path: rel, content: e.input.content, done: false })
+          emit({ type: 'agent-status', stage: 'writing', path: rel, message: '正在写入 ' + rel })
+          return
+        }
+      }
+      emit({ type: 'agent-status', stage: 'tool', tool: e.name || 'tool', message: 'ZCode 调用工具 ' + (e.name || '…') })
+      return
+    }
+    if (e.type === 'tool-end') {
+      const rel = state.pendingFiles.get(e.callId)
+      state.pendingFiles.delete(e.callId)
+      if (rel && e.ok !== false && !abort.signal.aborted) {
+        try {
+          const content = vault.readFile(rel)
+          currentRun?.writeActivity?.set(rel, Date.now())
+          emit({ type: 'agent-write', path: rel, content, done: true })
+          emit({ type: 'agent-status', stage: 'written', path: rel, message: '已写入 ' + rel })
+        } catch {
+          /* 文件可能被删除 */
+        }
+      }
+      return
+    }
+    if (e.type === 'turn-end' && e.response && e.response.trim()) {
+      state.reply = e.response // 以回合完整回复为准（覆盖增量累积）
+      emit({ type: 'agent-write', path: AGENT_WORKBENCH, content: state.reply, done: false })
+    }
+  }
+
+  try {
+    emit({ type: 'agent-status', stage: 'thinking', message: 'ZCode 引擎启动中…' })
+    const prompt = buildZcodePrompt({ userMessage, mode, attachments })
+    const maxTurns = settings.zcodeMaxTurns || 30
+    const resume = getZcodeSessionId(sessionId)
+    let r
+    try {
+      r = await runZcodeTurn({ prompt, cwd: vault.getVaultRoot(), resumeSessionId: resume, signal: abort.signal, maxTurns, onEvent })
+    } catch (e) {
+      if (abort.signal.aborted) throw e
+      if (!resume) throw e
+      console.warn('[zcode] 续会话失败，改用新会话重试：', e?.message || e)
+      emit({ type: 'agent-status', stage: 'thinking', message: 'ZCode 会话已失效，重新开始…' })
+      r = await runZcodeTurn({ prompt, cwd: vault.getVaultRoot(), signal: abort.signal, maxTurns, onEvent })
+    }
+    if (r.sessionId) setZcodeSessionId(sessionId, r.sessionId)
+
+    const finalText = (r.response || '').trim() || state.reply.trim()
+    if (finalText) {
+      appendWorkbench(finalText)
+      let full = ''
+      try {
+        full = vault.readFile(AGENT_WORKBENCH)
+      } catch {
+        full = finalText
+      }
+      emit({ type: 'agent-write', path: AGENT_WORKBENCH, content: full, done: true })
+    }
+
+    // 会话标题 + 保留 API 引擎的既有历史（对话记忆由 ZCode --resume 承担）
+    const { messages: hist, summary } = sessions.loadSession(sessionId)
+    let title
+    const meta = sessions.listSessions().find((s) => s.id === sessionId)
+    if (meta && meta.title === '新对话') {
+      const cleaned = String(userMessage).replace(/[\uFFFD\u0000-\u001F]/g, '').trim()
+      const weird = (cleaned.match(/[\u00C0-\u01FF\u0250-\u036F]/g) || []).length
+      const cjk = (cleaned.match(/[\u4E00-\u9FFF]/g) || []).length
+      title = weird >= 2 || (!cjk && /\u00C0-\u01FF/.test(cleaned) && cleaned.length > 0) ? undefined : cleaned.slice(0, 20) || undefined
+    }
+    sessions.saveSession(sessionId, hist, summary, title)
+    emit({ type: 'agent-done' })
+  } finally {
+    currentRun = null
+  }
+}
+
 /**
  * 运行一轮 agent 对话。
  * @param emit (event: object) => void  SSE 推送回调
@@ -416,24 +616,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
   const sessionId = sessions.ensureActive()
   const { messages: history, summary } = sessions.loadSession(sessionId)
 
-  const attachBlock =
-    Array.isArray(attachments) && attachments.length
-      ? '\n【附带资料】（[重点]=笔记核心依据；[次要]=补充对照）\n' +
-        attachments
-          .map((a) => {
-            const role = a.primary === false ? '[次要]' : '[重点]'
-            const sc = a.scope || {}
-            const parts = []
-            if (sc.chapter) parts.push(`章节「${sc.chapter}」`)
-            if (sc.from || sc.to) parts.push(`第 ${sc.from ?? '?'}–${sc.to ?? '?'} 页`)
-            const scopeText = parts.length
-              ? '建议范围：' + parts.join('，')
-              : '建议范围：未指定（先用 search_knowledge 定位相关章节/页码，禁止全文读入）'
-            return `- ${role} ${a.path} ｜ ${scopeText}`
-          })
-          .join('\n') +
-        '\n'
-      : ''
+  const attachBlock = buildAttachBlock(attachments)
   const userEntry = {
     role: 'user',
     content: `【模式：${MODES.includes(mode) ? mode : '教学'}】${userMessage}${attachBlock}`,

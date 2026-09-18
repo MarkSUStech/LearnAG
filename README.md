@@ -40,10 +40,21 @@ npm start          # 构建前端并由服务端托管，访问 http://127.0.0.1
 
 | 配置项 | 说明 |
 |---|---|
+| AI 引擎 | `API 服务`（OpenAI 兼容）或 `ZCode`（本机智能体） |
 | 知识库路径 | 本地任意文件夹（兼容 Obsidian Vault），默认使用内置演示库 `server/demo-vault` |
 | Base URL | 任意 OpenAI 兼容接口，默认 `https://api.deepseek.com` |
 | API Key | 保存在本机 `.learn-agent/settings.json`，不会回传前端 |
 | 模型 | 需支持 function calling（DeepSeek / GLM / OpenAI / Kimi / OpenRouter 免费模型等均可） |
+
+### ZCode 引擎（本机智能体）
+
+设置里把 AI 引擎切到 **ZCode** 后，学习任务不再调用外部 API，而是交给本机 ZCode CLI（桌面版内置内核）无头执行——凭据自动复用桌面版 ZCode 的登录（走你的账号额度），无需 API Key：
+
+- ZCode 以知识库根目录为工作区，用自带文件工具直接读写笔记、联网查证、绘制 mermaid 图，最终回复落到 `Agent/工作台.md`
+- 知识网络纪律以内置提示词注入：`知识图谱/*.md` 带规范 frontmatter 会被自动同步进 `知识图谱.json`（服务端监听，外部写入同样生效）
+- 跨请求记忆：通过 `--resume` 续接 ZCode 会话（映射存于 `.learn-agent/zcode-sessions.json`）
+- 答疑、翻译、图表修复同步切换；CLI 缺失时自动回落 API 引擎
+- 注意：ZCode 模式没有提问卡片通道（agent 不会中途向你提问）；CLI 随桌面版更新，路径可在设置中手动指定
 
 ## 知识图谱格式（知识图谱.json）
 

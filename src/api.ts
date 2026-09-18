@@ -30,13 +30,19 @@ export interface LspPluginInfo {
 
 export const api = {
   getSettings: () => http<Settings>('/api/settings'),
-  saveSettings: (patch: Partial<Record<'vaultPath' | 'apiBaseURL' | 'apiKey' | 'model' | 'ragModel', string>>) =>
+  saveSettings: (
+    patch: Partial<
+      Record<'vaultPath' | 'apiBaseURL' | 'apiKey' | 'model' | 'ragModel' | 'engine' | 'zcodePath' | 'zcodeMaxTurns', string | number>
+    >,
+  ) =>
     http<Settings>('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }),
   testConnection: () => http<{ ok: boolean; reply: string }>('/api/settings/test', { method: 'POST' }),
+  /** ZCode 引擎（本机 CLI）探测状态 */
+  zcodeStatus: () => http<{ found: boolean; version: string; path: string }>('/api/zcode/status'),
   getTree: () => http<{ tree: TreeNode[]; vaultPath: string }>('/api/tree'),
   /** 全部文件类型文件树（IDE 资源管理器） */
   getTreeAll: () => http<{ tree: TreeNode[]; vaultPath: string }>('/api/tree?all=1'),

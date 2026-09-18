@@ -57,6 +57,11 @@ export interface Settings {
   ragModel: string
   hasApiKey: boolean
   apiKeyMasked: string
+  engine: 'api' | 'zcode'
+  zcodePath: string
+  zcodeAutoPath: string
+  zcodeMaxTurns: number
+  zcodeFound: boolean
 }
 
 export interface RagStatus {

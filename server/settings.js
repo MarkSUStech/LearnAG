@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -13,6 +14,15 @@ const DEFAULTS = {
   apiKey: '',
   model: 'deepseek-chat',
   ragModel: 'jina-v2-base-zh',
+  engine: 'api', // 'api' = OpenAI 兼容服务；'zcode' = 本机 ZCode CLI
+  zcodePath: '', // 空 = 自动探测桌面版内置 CLI
+  zcodeMaxTurns: 30,
+}
+
+/** 桌面版 ZCode 内置 CLI 的默认位置（随桌面版安装/更新而存在） */
+export function defaultZcodePath() {
+  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
+  return path.join(base, 'Programs', 'ZCode', 'resources', 'glm', 'zcode.cjs')
 }
 
 let cache = null
@@ -47,6 +57,14 @@ export function saveSettings(patch) {
   }
   // apiKey 允许显式清空
   if (patch.apiKey === '') next.apiKey = ''
+  // 引擎：只接受合法取值
+  if (patch.engine === 'api' || patch.engine === 'zcode') next.engine = patch.engine
+  // zcodePath 允许显式清空（回到自动探测）
+  if (typeof patch.zcodePath === 'string') next.zcodePath = patch.zcodePath.trim()
+  if (patch.zcodeMaxTurns != null) {
+    const n = parseInt(patch.zcodeMaxTurns, 10)
+    if (Number.isFinite(n)) next.zcodeMaxTurns = Math.min(100, Math.max(3, n))
+  }
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next, null, 2), 'utf8')
   cache = next
   return next
@@ -54,6 +72,8 @@ export function saveSettings(patch) {
 
 export function publicSettings() {
   const s = loadSettings()
+  const autoPath = defaultZcodePath()
+  const effPath = String(s.zcodePath || '').trim() || autoPath
   return {
     vaultPath: s.vaultPath,
     apiBaseURL: s.apiBaseURL,
@@ -61,6 +81,11 @@ export function publicSettings() {
     ragModel: s.ragModel,
     hasApiKey: Boolean(s.apiKey),
     apiKeyMasked: s.apiKey ? s.apiKey.slice(0, 3) + '***' + s.apiKey.slice(-4) : '',
+    engine: s.engine || 'api',
+    zcodePath: s.zcodePath || '',
+    zcodeAutoPath: autoPath,
+    zcodeMaxTurns: s.zcodeMaxTurns || 30,
+    zcodeFound: fs.existsSync(effPath),
   }
 }
 

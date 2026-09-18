@@ -447,8 +447,8 @@ function annotationsSummary(doc) {
 
 const ANN_LABEL = { highlight: '荧光', underline: '下划线', squiggly: '波浪线', strikethrough: '删除线', 'tag-anchor': '标签' }
 
-/** 从笔记 frontmatter 提取字段，自动 upsert 图谱节点并按 related 补边 */
-function syncNoteToGraph(rel, content) {
+/** 从笔记 frontmatter 提取字段，自动 upsert 图谱节点并按 related 补边（export 供 vault watcher 复用：外部写入的 知识图谱/*.md 也进图谱） */
+export function syncNoteToGraph(rel, content) {
   try {
     const fm = parseFrontmatter(content)
     if (!fm.id) return false
