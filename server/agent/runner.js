@@ -88,6 +88,44 @@ function slimHistory(messages, oldCount) {
   })
 }
 
+/**
+ * 清洗会话历史：旧版本压缩边界可能把 assistant(tool_calls)↔tool 结果组从中间切开，
+ * 留下孤立 tool 消息或残缺调用组，模型服务会直接 400。加载时修复：
+ * - 完整组（tool_calls 与结果一一对应）保留
+ * - 残缺组降级为纯文本 assistant（保留其文字），孤立 tool 结果丢弃
+ */
+function sanitizeHistory(messages) {
+  const out = []
+  let i = 0
+  while (i < messages.length) {
+    const m = messages[i]
+    if (m && m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const ids = new Set(m.tool_calls.map((t) => t.id).filter(Boolean))
+      const results = []
+      let j = i + 1
+      while (j < messages.length && messages[j] && messages[j].role === 'tool') {
+        if (ids.has(messages[j].tool_call_id)) results.push(messages[j])
+        j++
+      }
+      if (ids.size > 0 && results.length === ids.size) {
+        out.push(m)
+        for (const r of results) out.push(r)
+      } else if (typeof m.content === 'string' && m.content.trim()) {
+        out.push({ role: 'assistant', content: m.content })
+      }
+      i = j
+      continue
+    }
+    if (m && m.role === 'tool') {
+      i++ // 孤立 tool 结果（前面没有对应的 tool_calls），丢弃
+      continue
+    }
+    out.push(m)
+    i++
+  }
+  return out
+}
+
 // ── 记忆笔记 ────────────────────────────────────────────────────────────────
 
 function readMemoryNote() {
@@ -331,7 +369,10 @@ export async function chatOnce(messages, opts = {}) {
 
 async function compactIfNeeded(messages, summary, emit) {
   if (messages.length <= COMPACTION_THRESHOLD) return { messages, summary }
-  const cut = messages.length - COMPACTION_KEEP
+  let cut = messages.length - COMPACTION_KEEP
+  // 边界对齐：keep 的开头不能是 tool 消息——它的 tool_calls 搭档会被切进旧段，
+  // 下一轮请求会 400（"tool' must be a response to a preceding message with 'tool_calls'"）
+  while (cut > 0 && messages[cut] && messages[cut].role === 'tool') cut--
   const oldPart = messages.slice(0, cut)
   const keep = messages.slice(cut)
   const transcript = oldPart
@@ -670,7 +711,9 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
   }
 
   const sessionId = sessions.ensureActive()
-  const { messages: history, summary } = sessions.loadSession(sessionId)
+  const loaded = sessions.loadSession(sessionId)
+  const history = sanitizeHistory(loaded.messages) // 修复旧版本压缩切坏的残缺组
+  const summary = loaded.summary
 
   const attachBlock = buildAttachBlock(attachments)
   const userEntry = {
