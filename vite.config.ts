@@ -25,7 +25,8 @@ export default defineConfig({
     exclude: ['monaco-editor'],
   },
   server: {
-    port: 5173,
+    // 5173 落在 Windows winnat 动态保留段（如 5085-5184）内会 EACCES，选保留段外的 3100
+    port: 3100,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3001',
