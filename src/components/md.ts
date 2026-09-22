@@ -109,7 +109,13 @@ export function renderRichMarkdown(text: string): RenderedMd {
 
   const raw = marked.parse(escapeMathPipes(body), { async: false }) as string
   const html = DOMPurify.sanitize(raw, { ADD_ATTR: ['style', 'data-ref'] })
-  const withLinks = html.replace(
+  // vault 相对路径的图片代理到 /api/raw（笔记内 ![](assets/x.jpg) 的显示）
+  const withImgs = html.replace(
+    /<img\b([^>]*?)src="([^"]*)"([^>]*)>/g,
+    (m2, pre: string, src: string, post: string) =>
+      /^(https?:|data:|\/\/)/.test(src) ? m2 : `<img${pre} src="/api/raw?path=${encodeURIComponent(src)}"${post}>`,
+  )
+  const withLinks = withImgs.replace(
     /\[\[([^\[\]\n]{1,80})\]\]/g,
     (_m, title) => `<span class="wikilink">[[${title}]]</span>`,
   )

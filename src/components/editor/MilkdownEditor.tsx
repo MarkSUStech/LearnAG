@@ -82,6 +82,37 @@ function buildDecorations(doc: any): DecorationSet {
 }
 
 const contentDecorationsKey = new PluginKey<DecorationSet>('learnagent-decorations')
+
+// 笔记里的图片（![](assets/x.jpg)）用 vault 相对路径存储，渲染时代理到 /api/raw；
+// http(s)/data 协议的地址原样保留
+function fixImageSrc(src: unknown) {
+  const s = String(src ?? '')
+  if (/^(https?:|data:|\/\/)/.test(s)) return s
+  return '/api/raw?path=' + encodeURIComponent(s)
+}
+
+function imageViewNode() {
+  return (node: any) => {
+    const dom = document.createElement('img')
+    dom.loading = 'lazy'
+    const apply = (n: any) => {
+      dom.src = fixImageSrc(n.attrs.src)
+      dom.alt = n.attrs.alt ?? ''
+      if (n.attrs.title) dom.title = n.attrs.title
+    }
+    apply(node)
+    return {
+      dom,
+      update(n: any) {
+        if (n.type.name !== 'image') return false
+        apply(n)
+        return true
+      },
+      ignoreMutation: () => true,
+      destroy() {},
+    }
+  }
+}
 const contentDecorations = $prose(
   () =>
     new Plugin({
@@ -151,6 +182,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
   // 创建编辑器（一次）
   useEffect(() => {
     let disposed = false
+    let imgObserver: MutationObserver | null = null
     const host = hostRef.current
     if (!host) return
 
@@ -159,6 +191,13 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
     const crepe = new Crepe({
       root: host,
       defaultValue: initialValue,
+      // 笔记内图片用 vault 相对路径存储， Crepe 的 image-block / image-inline
+      // 组件渲染时经 proxyDomURL 代理到 /api/raw（agent 下载的配图才能显示）
+      featureConfigs: {
+        [Crepe.Feature.ImageBlock]: {
+          proxyDomURL: (src: string) => fixImageSrc(src),
+        },
+      } as any,
       // 保留 CodeMirror（LaTeX 功能依赖它）；code_block 的渲染由下方 nodeView 覆盖：
       // mermaid 语言块渲染图表，其余语言回退为普通代码块
     })
@@ -182,6 +221,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
             autoFixBlocked: () => autoFixBlockedRef.current?.() ?? false,
           }),
           math_inline: mathInlineNodeView(),
+          image: imageViewNode(),
         },
       }))
     })
@@ -218,16 +258,40 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
           return
         }
         if (readonly) crepe.setReadonly(true)
-        // 取出 ProseMirror view，用于 [[wikilink]] 点击检测
-        try {
-          crepe.editor.action((ctx) => {
-            viewRef.current = ctx.get(editorViewCtx)
-          })
-        } catch (err) {
-          console.error('[milkdown] 获取 editorView 失败', err)
-        }
         const host = hostRef.current
         if (host) {
+          // 兜底：任何组件渲染出的 vault 相对路径图片都改写为 /api/raw 代理
+          // （幂等：已是代理地址的不再处理，不会循环）
+          const rewriteImgs = (root: Element) => {
+            root.querySelectorAll?.('img[src]').forEach((im) => {
+              const s = im.getAttribute('src') ?? ''
+              if (s && !/^(https?:|data:|\/\/|\/api\/raw)/.test(s)) {
+                im.setAttribute('src', fixImageSrc(s))
+              }
+            })
+          }
+          imgObserver = new MutationObserver((muts) => {
+            for (const m of muts) {
+              if (m.type === 'attributes' && m.target instanceof HTMLImageElement) {
+                const s = m.target.getAttribute('src') ?? ''
+                if (s && !/^(https?:|data:|\/\/|\/api\/raw)/.test(s)) rewriteImgs(host)
+              } else {
+                for (const n of m.addedNodes) {
+                  if (n instanceof HTMLElement) rewriteImgs(n)
+                }
+              }
+            }
+          })
+          imgObserver.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] })
+          rewriteImgs(host)
+          // 取出 ProseMirror view，用于 [[wikilink]] 点击检测
+          try {
+            crepe.editor.action((ctx) => {
+              viewRef.current = ctx.get(editorViewCtx)
+            })
+          } catch (err) {
+            console.error('[milkdown] 获取 editorView 失败', err)
+          }
           host.addEventListener('click', (e: MouseEvent) => {
             if (e.button !== 0) return
             // 装饰插件会把 [[...]] 包在 span.wikilink 里，直接从点击目标取标题

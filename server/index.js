@@ -787,6 +787,23 @@ app.post('/api/translate', async (req, res) => {
   res.end()
 })
 
+// ── vault 静态托管：笔记内 vault 相对路径的图片（![](assets/x.png)）按原路径直接加载 ──
+// 放在 dist 静态之前；/api/ 与点开头文件除外，文件不存在则透传（走 dist 静态）
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+  if (req.path.startsWith('/api/')) return next()
+  try {
+    const abs = vault.resolveInVault(req.path)
+    if (path.basename(abs).startsWith('.')) return next()
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+      return res.sendFile(abs, { headers: { 'Content-Type': mimeOf(abs) }, acceptRanges: true })
+    }
+  } catch {
+    /* 越出 vault 或路径非法 → 透传 */
+  }
+  next()
+})
+
 // ── 生产模式静态托管 ────────────────────────────────────────────────────────
 
 const distDir = path.join(__dirname, '..', 'dist')

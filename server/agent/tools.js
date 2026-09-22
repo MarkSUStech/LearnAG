@@ -10,6 +10,8 @@ import { loadDoc } from '../pdfstudy.js'
 import { buildStudyContext } from '../pdfcontext.js'
 import { keyFor, getOutlineTree, flattenOutline, chapterRange } from '../pdfdoc.js'
 
+import { searchImages, downloadImageToVault } from './imgsearch.js'
+
 // ── 工具定义（OpenAI function calling 格式） ────────────────────────────────
 
 export const toolDefs = [
@@ -235,6 +237,41 @@ export const toolDefs = [
   {
     type: 'function',
     function: {
+      name: 'search_images',
+      description:
+        '联网搜索真实图片并按图文语义相关度重排（本地 SigLIP 模型），返回图片列表（标题/原图链接/缩略图/来源页/授权/相关度）。' +
+        '适合为笔记配学术插图（结构图、示意图、实物图）。query 建议用英文（如 "feedforward neural network architecture diagram"），语义重排对英文更准。' +
+        '拿到结果后用 download_image 把选中的图存入知识库，再用 write_note 以 ![](相对路径) 引用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '图片检索词。英文效果最佳；越具体越好（对象+类型，如 "Transformer attention mechanism diagram"）' },
+          count: { type: 'number', description: '返回条数，默认 6，最多 10' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'download_image',
+      description:
+        '把一张网络图片下载进知识库（默认存到 assets/images/），返回可嵌入笔记的相对路径。' +
+        '与 search_images 配合使用：先搜索、选中后下载、再用 write_note 写入带 ![](路径) 的引用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '图片直链（search_images 结果里的 image_url）' },
+          path: { type: 'string', description: '保存路径（vault 内相对路径，如 assets/images/transformer.jpg）。默认自动命名' },
+        },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'delegate',
       description:
         '把一个具体任务委派给专职子 Agent 完成并拿回结果。可选 role：' +
@@ -390,6 +427,21 @@ export async function executeTool(name, args, hooks = {}) {
         vault.deleteEntry(args.path)
         vault.notifyWrite(String(args.path).replace(/\\/g, '/'), 'unlink')
         return JSON.stringify({ ok: true })
+      }
+      case 'search_images': {
+        const r = await searchImages(String(args.query ?? ''), Math.min(10, Number(args.count) || 6))
+        return JSON.stringify(
+          r.length
+            ? {
+                results: r,
+                hint: '选择相关度高（score 大）且授权合适的图：download_image 存入 assets/images/ 后，在笔记中用 ![](assets/images/文件名) 引用；学术引用建议注明来源页与作者/授权。',
+              }
+            : { results: [], note: '没有找到候选图。建议换更通用的英文关键词重试（如把中文概念翻译成英文术语）。' },
+        )
+      }
+      case 'download_image': {
+        const r = await downloadImageToVault({ url: String(args.url ?? ''), path: args.path ? String(args.path) : undefined })
+        return JSON.stringify({ ok: true, path: r.path, bytes: r.bytes, hint: '在笔记中用 ![](' + r.path + ') 引用' })
       }
       case 'delegate': {
         if (typeof hooks.delegate !== 'function') {
