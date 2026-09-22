@@ -359,12 +359,18 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
           // Crepe 把 $..$ 块转为 LaTeX 代码块；若内容明显不是数学，按代码显示而非喂给
           // KaTeX 产生一屏报错/毁掉排版。剪藏的 Makefile/ASCII 流程图常被误标为 latex。
           // 非数学特征：# 注释、->、引号、中文、制表连线字符、多行缩进且无 LaTeX 命令结构
+          // 注意：\text{...}/\mbox{...} 里常写中文注释（如 \text{严格凸}），判断前先剥离，
+          // 否则含中文注释的合法数学会被误判为代码
+          const stripped = code.replace(
+            /\\(?:text|mbox|mathrm|mathbf|textbf|textit|underline|boxed)\s*\{(?:[^{}]|\{[^{}]*\})*\}/g,
+            'X',
+          )
           const hasStructure = /\\[a-zA-Z]+|\^|_|\{|\}/.test(code) // LaTeX 命令/上下标/花括号
           const multiline = code.split('\n').length >= 3
           const looksLikeMath =
-            !/[\u4e00-\u9fff]/.test(code) &&
-            !/[─═►◄┌┐└┘│├┤]/.test(code) &&
-            !/(^|\n)\s*#|->|"|(^|\n)\s{4,}/.test(code) &&
+            !/[\u4e00-\u9fff]/.test(stripped) &&
+            !/[─═►◄┌┐└┘│├┤]/.test(stripped) &&
+            !/(^|\n)\s*#|->|"|(^|\n)\s{4,}/.test(stripped) &&
             (!multiline || hasStructure)
           if (!looksLikeMath) {
             diagram.classList.remove('error')
@@ -376,6 +382,7 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
             return
           }
           const holder = document.createElement('div')
+          holder.className = 'latex-render'
           katex.render(code, holder, { displayMode: true, throwOnError: false, strict: false })
           if (my !== renderToken) return
           diagram.classList.remove('error')
@@ -433,6 +440,84 @@ export function codeBlockNodeView({ isDark, notePath, autoFixBlocked }: CodeBloc
       destroy() {
         disposeEmptyFix()
       },
+    }
+  }
+}
+
+/**
+ * 行内公式（math_inline）nodeView：katex 渲染结果按公式串缓存 + 空闲批量绘制。
+ * 超大笔记（千级公式）打开或 agent 流式 replaceAll 时，同步重渲染全部公式会
+ * 造成秒级冻结；本实现先显示原始 LaTeX 占位，空闲时分批替换为渲染结果，
+ * 且相同公式串直接命中缓存——replaceAll 只需渲染新增/变化的公式。
+ */
+export function mathInlineNodeView() {
+  const cache = new Map<string, string>()
+  let queue: Array<() => void> = []
+  let scheduled = false
+  const flush = () => {
+    scheduled = false
+    const jobs = queue
+    queue = []
+    for (const job of jobs) job()
+  }
+  const schedule = (job: () => void) => {
+    queue.push(job)
+    if (scheduled) return
+    scheduled = true
+    const ric = (window as any).requestIdleCallback
+    if (typeof ric === 'function') ric(flush, { timeout: 300 })
+    else requestAnimationFrame(flush)
+  }
+
+  return (node: any) => {
+    const dom = document.createElement('span')
+    let cur = String(node.attrs.value ?? '')
+    dom.dataset.type = 'math_inline'
+    dom.dataset.value = cur
+    dom.className = 'math-inline-pending'
+    dom.textContent = cur
+    let pending = false
+    const paint = () => {
+      let html = cache.get(cur)
+      if (html === undefined) {
+        try {
+          html = katex.renderToString(cur, { throwOnError: false, strict: false })
+        } catch {
+          html = ''
+        }
+        cache.set(cur, html)
+      }
+      dom.innerHTML = html
+      dom.classList.remove('math-inline-pending')
+    }
+    const requestPaint = () => {
+      if (pending) return
+      pending = true
+      schedule(() => {
+        pending = false
+        paint()
+      })
+    }
+    requestPaint()
+    return {
+      dom,
+      update(n: any) {
+        if (n.type.name !== 'math_inline') return false
+        const v = String(n.attrs.value ?? '')
+        if (v !== cur) {
+          cur = v
+          dom.dataset.value = v
+          dom.className = 'math-inline-pending'
+          dom.textContent = v
+          requestPaint()
+        }
+        return true
+      },
+      // katex 渲染产生的内部 DOM 变化全部忽略（节点是 atom，内容不受 PM 管理）
+      ignoreMutation() {
+        return true
+      },
+      destroy() {},
     }
   }
 }

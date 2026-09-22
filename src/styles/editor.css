@@ -63,7 +63,9 @@
   flex-direction: column;
   align-items: center;
 }
-.editor-content-col {
+/* 带 .editor-body 前缀提高特异性：压过后面的 `.editor-body > * { max-width: 100% }`，
+   否则行宽设置(--editor-max-width)永远被 100% 覆盖、修改无效 */
+.editor-body > .editor-content-col {
   width: 100%;
   max-width: var(--editor-max-width, 860px);
   display: flex;
@@ -373,6 +375,10 @@ html[data-theme='dark'] .milkdown {
   text-align: left;
   color: var(--text);
 }
+/* katex display 块占满容器宽度：\tag 编号右对齐到容器边缘，不会叠在公式上 */
+.mermaid-diagram .latex-render {
+  width: 100%;
+}
 .tutor-msg.assistant .rich-md .latex-as-code,
 .q-text.md .latex-as-code {
   white-space: pre-wrap;
@@ -658,3 +664,11 @@ sup[data-type='footnote_reference']:hover {
   color: var(--text-3);
 }
 
+
+/* 行内公式懒渲染占位：渲染前显示原始 LaTeX，空闲时替换为 katex 结果 */
+.math-inline-pending {
+  color: var(--text-3, #8a8a8a);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.88em;
+  opacity: 0.75;
+}

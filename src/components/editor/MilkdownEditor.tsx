@@ -4,7 +4,7 @@ import { editorViewCtx, editorViewOptionsCtx } from '@milkdown/kit/core'
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state'
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view'
 import { replaceAll, $prose } from '@milkdown/kit/utils'
-import { codeBlockNodeView } from './mermaidNodeView'
+import { codeBlockNodeView, mathInlineNodeView } from './mermaidNodeView'
 import { attachCiteHover, parseCiteDefs } from '../../cite'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
@@ -172,6 +172,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
     crepe.editor.config((ctx) => {
       ctx.update(editorViewOptionsCtx, (prev) => ({
         ...prev,
+        // 大文档（10 万字符级）的中文拼写检查会让首次输入卡顿数秒，直接关闭
+        attributes: { ...(prev.attributes ?? {}), spellcheck: 'false', 'data-gramm': 'false' },
         nodeViews: {
           ...prev.nodeViews,
           code_block: codeBlockNodeView({
@@ -179,6 +181,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
             notePath: notePath,
             autoFixBlocked: () => autoFixBlockedRef.current?.() ?? false,
           }),
+          math_inline: mathInlineNodeView(),
         },
       }))
     })
