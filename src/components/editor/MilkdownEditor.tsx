@@ -11,67 +11,87 @@ import '@milkdown/crepe/theme/frame.css'
 
 // [[wikilink]] 高亮装饰 + Obsidian callout（> [!type]）块级装饰
 // 均不改动文档内容，只加样式；保存时仍是原文
+// 性能：文本节点不可变，扫描结果按节点 WeakMap 缓存——每次按键只重新扫描
+// 被编辑的那个节点，其余节点直接复用；角标 widget 用节点内偏移做稳定 key，
+// 避免光标前后打字导致 widget DOM 反复重建（大笔记卡顿的主因之一）。
+const textScanCache = new WeakMap<any, { wl: Array<[number, number]>; cite: Array<{ num: string; idx: number }> }>()
+
+function scanTextNode(node: any) {
+  let c = textScanCache.get(node)
+  if (!c) {
+    c = { wl: [], cite: [] }
+    const re = /\[\[([^\[\]\n]{1,80})\]\]/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(node.text))) c.wl.push([m.index, m[0].length])
+    const reCite = /\[\^(\d{1,3})\]/g
+    while ((m = reCite.exec(node.text))) c.cite.push({ num: m[1], idx: m.index })
+    textScanCache.set(node, c)
+  }
+  return c
+}
+
+function buildDecorations(doc: any): DecorationSet {
+  const decos: Decoration[] = []
+  doc.descendants((node: any, pos: number) => {
+    if (node.isText && node.text) {
+      const c = scanTextNode(node)
+      for (const [idx, len] of c.wl) {
+        decos.push(Decoration.inline(pos + idx, pos + idx + len, { class: 'wikilink' }))
+      }
+      // 资料引用角标：[^n] 隐藏原文，替换为可悬停的编号徽章（文档文本不变）
+      for (const { num, idx } of c.cite) {
+        const from = pos + idx
+        decos.push(Decoration.inline(from, from + num.length + 3, { class: 'cite-mark' }))
+        decos.push(
+          Decoration.widget(
+            from,
+            () => {
+              const sup = document.createElement('sup')
+              sup.className = 'cite-badge'
+              sup.dataset.ref = num
+              sup.textContent = num
+              return sup
+            },
+            { side: -1, key: 'cite-' + num + '-' + idx },
+          ),
+        )
+      }
+      return
+    }
+    // callout：引用块首行以 [!type] 开头 → 块级样式 + 隐藏标记
+    if (node.type.name === 'blockquote') {
+      const m = /^\s*\[!(\w+)\]/.exec(node.textContent)
+      if (m) {
+        const type = m[1].toLowerCase()
+        decos.push(Decoration.node(pos, pos + node.nodeSize, { class: `callout callout-${type}` }))
+        node.descendants((child: any, childPos: number) => {
+          if (!child.isText || !child.text) return
+          const mm = /^\s*\[!\w+\]\s*/.exec(child.text)
+          if (mm) {
+            decos.push(
+              Decoration.inline(pos + 1 + childPos + mm.index, pos + 1 + childPos + mm.index + mm[0].length, {
+                class: 'callout-marker',
+              }),
+            )
+          }
+        })
+      }
+    }
+  })
+  return DecorationSet.create(doc, decos)
+}
+
+const contentDecorationsKey = new PluginKey<DecorationSet>('learnagent-decorations')
 const contentDecorations = $prose(
   () =>
     new Plugin({
-      key: new PluginKey('learnagent-decorations'),
+      key: contentDecorationsKey,
+      state: {
+        init: (_: unknown, state: any) => buildDecorations(state.doc),
+        apply: (tr: any, old: DecorationSet) => (tr.docChanged ? buildDecorations(tr.doc) : old.map(tr.mapping, tr.doc)),
+      },
       props: {
-        decorations(state) {
-          const decos: Decoration[] = []
-          state.doc.descendants((node, pos) => {
-            if (node.isText && node.text) {
-              const re = /\[\[([^\[\]\n]{1,80})\]\]/g
-              let m: RegExpExecArray | null
-              while ((m = re.exec(node.text))) {
-                decos.push(
-                  Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
-                    class: 'wikilink',
-                  }),
-                )
-              }
-              // 资料引用角标：[^n] 隐藏原文，替换为可悬停的编号徽章（文档文本不变）
-              const reCite = /\[\^(\d{1,3})\]/g
-              while ((m = reCite.exec(node.text))) {
-                const num = m[1]
-                const from = pos + m.index
-                decos.push(Decoration.inline(from, from + m[0].length, { class: 'cite-mark' }))
-                decos.push(
-                  Decoration.widget(
-                    from,
-                    () => {
-                      const sup = document.createElement('sup')
-                      sup.className = 'cite-badge'
-                      sup.dataset.ref = num
-                      sup.textContent = num
-                      return sup
-                    },
-                    { side: -1, key: 'cite-' + num + '-' + from },
-                  ),
-                )
-              }
-            }
-            // callout：引用块首行以 [!type] 开头 → 块级样式 + 隐藏标记
-            if (node.type.name === 'blockquote') {
-              const m = /^\s*\[!(\w+)\]/.exec(node.textContent)
-              if (m) {
-                const type = m[1].toLowerCase()
-                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: `callout callout-${type}` }))
-                node.descendants((child, childPos) => {
-                  if (!child.isText || !child.text) return
-                  const mm = /^\s*\[!\w+\]\s*/.exec(child.text)
-                  if (mm) {
-                    decos.push(
-                      Decoration.inline(pos + 1 + childPos + mm.index, pos + 1 + childPos + mm.index + mm[0].length, {
-                        class: 'callout-marker',
-                      }),
-                    )
-                  }
-                })
-              }
-            }
-          })
-          return DecorationSet.create(state.doc, decos)
-        },
+        decorations: (state: any) => contentDecorationsKey.getState(state),
       },
     }),
 )
@@ -94,6 +114,8 @@ interface Props {
   onChange: (md: string) => void
   /** 点击 [[wikilink]] 时回调（传入链接标题） */
   onWikilink?: (title: string) => void
+  /** 点击引用角标时回调（打开来源文件）；工作台等含脚注引用的笔记用 */
+  onOpenCite?: (info: import('../../cite').CiteInfo) => void
   /** 只读模式（资料预览等） */
   readonly?: boolean
   /** 所属笔记路径：提供后 mermaid 渲染失败会自动触发 AI 修复 */
@@ -108,7 +130,7 @@ interface Props {
  * - 用户编辑 → onChange 回调（去抖由父层处理）
  * - 点击 [[wikilink]] → onWikilink
  */
-export default function MilkdownEditor({ value, dark, onChange, onWikilink, readonly, notePath, autoFixBlocked }: Props) {
+export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOpenCite, readonly, notePath, autoFixBlocked }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const crepeRef = useRef<Crepe | null>(null)
   const viewRef = useRef<any>(null)
@@ -116,6 +138,8 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
   onChangeRef.current = onChange
   const onWikilinkRef = useRef(onWikilink)
   onWikilinkRef.current = onWikilink
+  const onOpenCiteRef = useRef(onOpenCite)
+  onOpenCiteRef.current = onOpenCite
   const autoFixBlockedRef = useRef(autoFixBlocked)
   autoFixBlockedRef.current = autoFixBlocked
   const lastPushed = useRef(value) // 最近一次由本组件上报的内容
@@ -210,7 +234,11 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, read
             if (m?.[1]) onWikilinkRef.current?.(m[1].trim())
           })
           // 引用角标悬浮来源卡片：从 value prop（原始 markdown）解析 [^n]: 定义
-          disposeCiteHover.current = attachCiteHover(host, (num) => parseCiteDefs(valueRef.current).get(num))
+          disposeCiteHover.current = attachCiteHover(
+            host,
+            (num) => parseCiteDefs(valueRef.current).get(num),
+            onOpenCiteRef.current ? (_num, info) => onOpenCiteRef.current?.(info) : undefined,
+          )
         }
       })
       .catch((e) => {
