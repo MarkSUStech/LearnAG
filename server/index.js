@@ -1,6 +1,7 @@
 import express from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
+import { exec } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { loadSettings, saveSettings, publicSettings } from './settings.js'
 import * as vault from './vault.js'
@@ -43,6 +44,16 @@ const PORT = Number(process.env.PORT) || 3001
 // 曾因「崩溃处理器里 console.error 抛 EPIPE → 又触发崩溃处理器」的同步循环写出 55GB 日志
 process.stdout?.on?.('error', () => {})
 process.stderr?.on?.('error', () => {})
+
+// 控制台代码页切 UTF-8：cmd 默认 936(GBK) 时，ZCode CLI 子进程内部的 ANSI 编码环节
+// 会把中文任务提示词解成乱码；顺带让本进程的中文日志在控制台正常显示
+if (process.platform === 'win32') {
+  try {
+    exec('chcp 65001 >nul 2>&1', () => {})
+  } catch {
+    /* 无控制台（后台服务）时静默跳过 */
+  }
+}
 
 const CRASH_LOG = path.join(__dirname, '..', '.learn-agent', 'crash.log')
 let lastCrashLine = ''

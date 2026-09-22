@@ -110,6 +110,43 @@ function maybeSample(line) {
 
 // ── 子进程控制 ───────────────────────────────────────────────────────────────
 
+/** 定位桌面版刷新出的内置 Provider 配置（zcode-builtin.json 的最新版本）。
+ *  v0.16.9 起，脱离桌面环境无头运行时 CLI 的自动定位会失效
+ *  （报"无法定位 CLI ZCode Built-in Provider Config"并退出），
+ *  必须用 ZCODE_BUILTIN_PROVIDER*_CONFIG_FILE 显式指路。 */
+function resolveBuiltinProviderConfig() {
+  const root = path.join(os.homedir(), '.zcode', 'v2', 'runtime', 'provider')
+  const newer = (a, b) => {
+    const pa = String(a).split('.').map(Number)
+    const pb = String(b).split('.').map(Number)
+    for (let i = 0; i < 3; i++) {
+      const x = pa[i] || 0
+      const y = pb[i] || 0
+      if (x !== y) return x > y
+    }
+    return false
+  }
+  try {
+    let best = null
+    for (const platform of fs.readdirSync(root)) {
+      const pdir = path.join(root, platform)
+      if (!fs.statSync(pdir).isDirectory()) continue
+      for (const version of fs.readdirSync(pdir)) {
+        const vdir = path.join(pdir, version)
+        if (!fs.statSync(vdir).isDirectory()) continue
+        for (const ep of fs.readdirSync(vdir)) {
+          if (!ep.startsWith('endpoint-')) continue
+          const f = path.join(vdir, ep, 'zcode-builtin.json')
+          if (fs.existsSync(f) && (!best || newer(version, best.version))) best = { version, file: f }
+        }
+      }
+    }
+    return best?.file ?? ''
+  } catch {
+    return ''
+  }
+}
+
 function killTree(child) {
   if (!child || child.exitCode !== null || child.signalCode) return
   try {
@@ -143,19 +180,53 @@ export function runZcodeTurn({ prompt, cwd, resumeSessionId, signal, maxTurns = 
   if (!fs.existsSync(cli)) {
     return Promise.reject(new Error('未找到本机 ZCode CLI：' + cli))
   }
-  const args = [cli, '-p', prompt, '--output-format', 'stream-json', '--mode', 'yolo', '--no-color']
+  // v0.16.9 实测 bug：中文长 argv 在 CLI 内部会被按单字节代码页重解（用户消息变
+  // "希伯来/阿拉伯字符"乱码），前缀完好、尾段损毁。规避：提示词写 UTF-8 临时文件，
+  // 命令行只传纯 ASCII 的"读取该文件并执行"。文件放 cwd 内（主任务在 vault/.agent，
+  // 已被文件树/监听忽略）；辅助调用无 cwd 时放数据目录。
+  let promptFile = ''
+  try {
+    if (/[^\x00-\x7F]/.test(prompt)) {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+      const dir = cwd ? path.join(cwd, '.agent') : dataDir()
+      promptFile = path.join(dir, `zcode-prompt-${id}.txt`)
+      fs.mkdirSync(path.dirname(promptFile), { recursive: true })
+      fs.writeFileSync(promptFile, prompt, 'utf8')
+    }
+  } catch {
+    promptFile = ''
+  }
+  const argvPrompt = promptFile
+    ? `Read the file "${promptFile.split(path.sep).join('/')}" (UTF-8 text). It is your complete task briefing: background, rules and the user's request. Read it first, then execute exactly what it says.`
+    : prompt
+  const args = [
+    cli,
+    '-p',
+    argvPrompt,
+    '--output-format',
+    'stream-json',
+    '--mode',
+    'yolo', // 无头默认即 yolo，显式声明防默认变化
+    '--no-color',
+  ]
   // 注意：help 里列出的 --max-turns 在 v0.16.5 主解析器未注册（传了会报 Unknown option），
   // yolo 无头模式本身不限轮次；maxTurns 参数保留在签名里供未来版本恢复
   if (cwd) args.push('--cwd', cwd)
   if (resumeSessionId) args.push('--resume', resumeSessionId)
 
   return new Promise((resolve, reject) => {
-    let child
-    try {
-      child = spawn(process.execPath, args, { windowsHide: true })
-    } catch (e) {
-      return reject(new Error('ZCode CLI 启动失败：' + (e?.message || e)))
+  let child
+  try {
+    const env = { ...process.env }
+    const builtin = resolveBuiltinProviderConfig()
+    if (builtin) {
+      env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = builtin
+      env.ZCODE_BUILTIN_PROVIDER_BUNDLED_CONFIG_FILE = builtin
     }
+    child = spawn(process.execPath, args, { windowsHide: true, env })
+  } catch (e) {
+    return reject(new Error('ZCode CLI 启动失败：' + (e?.message || e)))
+  }
 
     let stderrTail = ''
     let buf = ''
@@ -216,6 +287,8 @@ export function runZcodeTurn({ prompt, cwd, resumeSessionId, signal, maxTurns = 
           if (ev.type === 'model.streaming') {
             if (p.kind === 'text_delta' && typeof p.delta === 'string' && p.delta) {
               onEvent?.({ type: 'text-delta', text: p.delta })
+            } else if (p.kind === 'reasoning_delta') {
+              onEvent?.({ type: 'reasoning-delta' })
             }
           } else if (ev.type === 'tool.updated') {
             if (p.kind === 'scheduled' && p.toolCallId) {
@@ -248,6 +321,13 @@ export function runZcodeTurn({ prompt, cwd, resumeSessionId, signal, maxTurns = 
     child.on('error', (e) => finish(new Error('ZCode CLI 进程错误：' + (e?.message || e))))
     child.on('close', (code) => {
       detach(child)
+      if (promptFile) {
+        try {
+          fs.unlinkSync(promptFile)
+        } catch {
+          /* 清理失败无害 */
+        }
+      }
       if (!result && code !== 0) {
         const tail = stderrTail.trim().split(/\r?\n/).filter(Boolean).slice(-3).join('；')
         return finish(new Error(`ZCode CLI 异常退出（${code}）` + (tail ? '：' + tail : '')))

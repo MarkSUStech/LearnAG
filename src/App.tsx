@@ -184,8 +184,9 @@ export default function App() {
   }, [])
 
   // ── 文件打开 / 保存 ─────────────────────────────────────────────────────
-  function openPdf(path: string) {
+  function openPdf(path: string, page?: number) {
     flushSaves()
+    if (Number.isFinite(page) && page && page > 0) setPdfJump({ path, page, ts: Date.now() })
     setTabs((ts) => {
       const i = ts.findIndex((t) => t.kind === 'pdf' && t.path === path)
       if (i >= 0) {
@@ -197,6 +198,66 @@ export default function App() {
       setActiveIdx(next.findIndex((t) => t.kind === 'pdf' && t.path === path))
       return next
     })
+  }
+
+  /** PDF 打开后的页码跳转信号（供引用角标带页打开） */
+  const [pdfJump, setPdfJump] = useState<{ path: string; page: number; ts: number } | null>(null)
+
+  /** 点击引用角标：解析标题→库内文件→打开 PDF（带页码）或笔记；标题缺失/匹配不到时用 RAG 语义检索兜底。
+   *  sourcePath = 当前笔记路径：检索结果排除自己，否则会"打开已打开的笔记"看起来毫无反应。
+   *  文件名关键词匹配加分：引文提到的文件名(如 Math_Stat_TIAN)优先于同主题其他资料。 */
+  async function openCitation(info: import('./cite').CiteInfo, sourcePath?: string) {
+    const title = info.title.replace(/^《/, '').replace(/》$/, '').trim()
+    const quote = info.quote || ''
+    const pm = /(?:P|p|第)\s*(\d{1,4})(?:\s*[-–—~]\s*\d+)?\s*页?/.exec(quote)
+    const page = pm ? parseInt(pm[1], 10) : undefined
+    const files = flattenFiles(tree)
+    const norm = (s: string) => s.toLowerCase()
+    const baseOf = (p: string) => p.split('/').pop() ?? ''
+    const stemOf = (p: string) => baseOf(p).replace(/\.(pdf|md)$/i, '')
+    const open = (hit: string) => {
+      if (/\.pdf$/i.test(hit)) openPdf(hit, page)
+      else void openNote(hit)
+    }
+    // 1) 标题精确/包含匹配（无标题的纯摘录引用跳过此步；命中自己视为未命中）
+    if (title) {
+      const hit =
+        files.find((p) => norm(stemOf(p)) === norm(title)) ??
+        files.find((p) => norm(baseOf(p)) === norm(title + '.pdf') || norm(baseOf(p)) === norm(title + '.md')) ??
+        files.find((p) => norm(baseOf(p)).includes(norm(title)) && /\.(pdf|md)$/i.test(p))
+      if (hit && hit !== sourcePath) {
+        open(hit)
+        return
+      }
+    }
+    // 2) RAG 语义检索兜底：引用标题常与实际文件名无关（《Foundation of...》→ lecturenote1.pdf），
+    //    甚至没有标题（只有摘录），此时用摘录文本检索；ext=PDF 或摘录提到 PDF 时优先命中 PDF 路径（含其标注/卡片块）。
+    //    排除当前笔记自己——否则第一名往往是正在看的这篇，表现为"点了没反应"
+    try {
+      const q = (title || quote).slice(0, 150)
+      const r = await fetch(`/api/rag/search?query=${encodeURIComponent(q)}&k=8`).then((x) => x.json())
+      // 摘录里提到 PDF、或引用类型标注为 PDF 时优先命中 PDF 路径
+      const wantPdf = /pdf/i.test(info.ext) || /pdf/i.test(quote)
+      const pool = (r.results ?? [])
+        .filter((x: { path: string }) => /\.(pdf|md)$/i.test(x.path) && x.path !== sourcePath)
+      // 引文里的关键词（≥4 位字母数字段）与文件名重叠越多越优先：同名教材优先于同主题的其他资料
+      const qTokens = q.toLowerCase().match(/[a-z0-9_]{4,}/g) ?? []
+      const byMatch = [...pool].sort(
+        (a: { path: string }, b: { path: string }) =>
+          qTokens.filter((tk) => baseOf(b.path).toLowerCase().includes(tk)).length -
+          qTokens.filter((tk) => baseOf(a.path).toLowerCase().includes(tk)).length,
+      )
+      const pick = wantPdf
+        ? byMatch.find((x: { path: string }) => /\.pdf$/i.test(x.path)) ?? pool[0]
+        : byMatch.find((x: { path: string }) => /\.md$/i.test(x.path)) ?? pool[0]
+      if (pick) {
+        open((pick as { path: string }).path)
+        return
+      }
+    } catch {
+      /* 检索失败按未找到处理 */
+    }
+    toast(`知识库中未找到「${title || '该来源'}」`)
   }
 
   async function openNote(path: string) {
@@ -744,6 +805,7 @@ export default function App() {
                 dark={dark}
                 onEdit={handleEdit}
                 onWikilink={openWikilink}
+                onOpenCite={(info) => void openCitation(info, p)}
                 onMarkLearned={(pp, title) => void markLearned(pp, title)}
                 learnedRunning={Boolean(learnedFlow)}
                 celebrate={celebratePath === p}
@@ -763,6 +825,7 @@ export default function App() {
                 width={tutorWidth}
                 onResizeStart={(e) => startResize(e, 'tutor')}
                 onClose={() => setTutorFor(null)}
+                onOpenSource={(info) => void openCitation(info, p)}
               />
             )}
           </div>
@@ -777,6 +840,7 @@ export default function App() {
             path={p}
             dark={dark}
             files={flattenFiles(tree)}
+            jumpHint={pdfJump?.path === p ? pdfJump : undefined}
             onComposeNotes={(message, attachments) => void sendToAgent(message, attachments, '写作')}
           />
         </div>
@@ -1001,6 +1065,8 @@ export default function App() {
           onStop={stopAgent}
           answering={Boolean(pendingQuestion)}
           files={flattenFiles(tree)}
+          engine={settings?.engine}
+          onOpenEngineSettings={() => setSettingsOpen(true)}
           planChip={
             planInfo?.exists && planInfo.goal ? (
               <button
@@ -1036,6 +1102,7 @@ export default function App() {
           onSaved={(s) => {
             setSettings(s)
             setSettingsOpen(false)
+            toast(s.engine === 'zcode' ? '已保存：当前引擎 ZCode（本机智能体）' : '已保存：当前引擎 API 服务')
           }}
         />
       )}

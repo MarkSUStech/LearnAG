@@ -515,6 +515,31 @@
 .ib-expert.active {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+/* 引擎徽标：显示当前 AI 引擎（API / ZCode），点击打开设置 */
+.ib-engine {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px 0 5px;
+  border-radius: 11px;
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--bg-2, rgba(128, 128, 128, 0.12));
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.ib-engine .material-symbols-rounded {
+  font-size: 14px;
+}
+.ib-engine:hover {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+.ib-engine.zcode {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
 .ib-attachments {
   flex-basis: 100%;
   order: -1;

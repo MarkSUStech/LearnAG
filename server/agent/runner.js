@@ -598,8 +598,17 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] 
 
   const ZCODE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
-  const state = { reply: '', lastStreamEmit: 0, pendingFiles: new Map() }
+  const state = { reply: '', lastStreamEmit: 0, lastThinkEmit: 0, pendingFiles: new Map() }
   const onEvent = (e) => {
+    if (e.type === 'reasoning-delta') {
+      // 长推理阶段给用户一个活着的心跳（节流）
+      const now = Date.now()
+      if (now - state.lastThinkEmit > 4000) {
+        state.lastThinkEmit = now
+        emit({ type: 'agent-status', stage: 'thinking', message: 'ZCode 思考中…' })
+      }
+      return
+    }
     if (e.type === 'text-delta') {
       state.reply += e.text
       const now = Date.now()

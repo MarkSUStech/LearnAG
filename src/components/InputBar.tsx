@@ -14,6 +14,8 @@ interface Props {
   planChip?: ReactNode
   answering: boolean
   files: string[]
+  engine?: 'api' | 'zcode'
+  onOpenEngineSettings?: () => void
 }
 
 /** agent 面板（专家图标 / \ 唤起）：分组展示全部全局 agent */
@@ -41,7 +43,7 @@ const PLACEHOLDER: Record<Mode, string> = {
   写作: '描述笔记要求，例如：根据这篇论文和我的标注写一篇笔记…',
 }
 
-export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files }: Props) {
+export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files, engine, onOpenEngineSettings }: Props) {
   const [text, setText] = useState('')
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -125,6 +127,20 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
             >
               <span className="material-symbols-rounded">{modeIcon(mode)}</span>
             </button>
+            {engine && (
+              <button
+                className={`ib-engine${engine === 'zcode' ? ' zcode' : ''}`}
+                title={
+                  engine === 'zcode'
+                    ? '当前引擎：ZCode（本机智能体，走你的账号额度）。点击打开设置'
+                    : '当前引擎：API 服务（OpenAI 兼容）。点击打开设置'
+                }
+                onClick={onOpenEngineSettings}
+              >
+                <span className="material-symbols-rounded">{engine === 'zcode' ? 'smart_toy' : 'cloud'}</span>
+                {engine === 'zcode' ? 'ZCode' : 'API'}
+              </button>
+            )}
             {mode === '写作' && (
               <button className="ib-add" title="附带笔记 / PDF 资料" onClick={() => setPickerOpen(true)}>
                 <span className="material-symbols-rounded">add</span>
