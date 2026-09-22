@@ -9,6 +9,7 @@ import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
 import { runSubAgent, subAgentLabel } from './subagent.js'
 import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId, ensureZcodeMcp } from './zcode.js'
+import { goalContextBlock } from '../goals.js'
 
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
@@ -546,7 +547,7 @@ const ZCODE_MODE_HINT = {
   写作: '基于附带资料撰写或完善笔记：先读资料相关部分，引用落到具体文件与页码/章节。',
 }
 
-function buildZcodePrompt({ userMessage, mode, attachments }) {
+function buildZcodePrompt({ userMessage, mode, attachments, goalBlock = '' }) {
   const safeMode = MODES.includes(mode) ? mode : '教学'
   return `你是用户本机的学习智能体。当前工作目录就是用户的知识库（Obsidian vault）根目录，你的所有读写都发生在其中。
 
@@ -565,6 +566,9 @@ function buildZcodePrompt({ userMessage, mode, attachments }) {
 - 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
 - 不要修改 .obsidian、.agent 与 Agent/工作台.md（工作台由系统写入）
 - 只操作上述 vault 内的文件，不要动用户电脑上的其他东西
+
+## 当前目标（用户本轮选定，优先服务它）
+${goalBlock}
 
 ## 当前任务
 模式：【${safeMode}】${ZCODE_MODE_HINT[safeMode] || ''}
@@ -588,7 +592,7 @@ function relFromVault(absPath) {
  * ZCode 引擎的主智能体：整个任务交给本机 ZCode CLI 无头执行，
  * 事件流映射回 LearnAgent 的 SSE 协议（agent-status / agent-write / agent-done）。
  */
-export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] }) {
+export async function runZcodeAgent({ emit, userMessage, mode, attachments = [], goalId = '' }) {
   if (currentRun) throw new Error('已有任务在进行中')
   if (!zcodeAvailable()) throw new Error('未找到本机 ZCode CLI，请在设置中检查路径，或切回 API 引擎')
   const abort = new AbortController()
@@ -658,7 +662,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] 
   try {
     emit({ type: 'agent-status', stage: 'thinking', message: 'ZCode 引擎启动中…' })
     ensureZcodeMcp() // 桥接工具（ask_user / search_knowledge）挂载配置
-    const prompt = buildZcodePrompt({ userMessage, mode, attachments })
+    const prompt = buildZcodePrompt({ userMessage, mode, attachments, goalBlock: goalContextBlock(goalId).block })
     const maxTurns = settings.zcodeMaxTurns || 30
     const resume = getZcodeSessionId(sessionId)
     let r
@@ -709,7 +713,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [] 
  * @param mode '教学' | '探索' | '目标' | '写作'
  * @param attachments 写作模式附带的资料路径（vault 相对路径，md/pdf）
  */
-export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
+export async function runAgent({ emit, userMessage, mode, attachments = [], goalId = '' }) {
   if (currentRun) throw new Error('已有任务在进行中')
   const abort = new AbortController()
   currentRun = { controller: abort, writeActivity: new Map() }
@@ -757,6 +761,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [] }) {
           sessionSummary: summary,
           turnCount: history.filter((m) => m.role === 'user').length + 1,
           mode: safeMode,
+          goalBlock: goalContextBlock(goalId).block,
         }),
       },
       ...history,

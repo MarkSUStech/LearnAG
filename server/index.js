@@ -33,6 +33,7 @@ import * as pdfstudy from './pdfstudy.js'
 import { keyFor, getOutlineTree } from './pdfdoc.js'
 import * as rag from './rag.js'
 import { lspRoutes, handleLspConnection } from './lsp.js'
+import { listGoals } from './goals.js'
 import { runRoutes, handleRunConnection } from './run.js'
 import { setupWebSocket } from './ws.js'
 
@@ -339,7 +340,7 @@ app.get('/api/graph', (req, res) => {
 // ── Agent ───────────────────────────────────────────────────────────────────
 
 app.post('/api/agent', async (req, res) => {
-  const { message, mode, attachments } = req.body ?? {}
+  const { message, mode, attachments, goalId } = req.body ?? {}
   if (typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: '消息不能为空' })
   }
@@ -373,6 +374,7 @@ app.post('/api/agent', async (req, res) => {
   run({
     emit,
     userMessage: message.trim(),
+    goalId: typeof goalId === 'string' ? goalId : '',
     mode: typeof mode === 'string' ? mode : '教学',
     attachments: Array.isArray(attachments)
       ? attachments.map(normAtt).filter(Boolean).slice(0, 20)
@@ -422,6 +424,16 @@ app.post('/internal/zcode/search', async (req, res) => {
     res.json(await rag.search(q, Math.min(12, Number(req.body?.max_results) || 6)))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+// ── 目标库（多目标，用户每轮可选） ────────────────────────────────────────────
+
+app.get('/api/goals', (req, res) => {
+  try {
+    res.json({ goals: listGoals() })
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
   }
 })
 

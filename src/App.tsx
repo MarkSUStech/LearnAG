@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import EditorPane from './components/EditorPane'
 import GraphView from './components/GraphView'
 import InputBar, { type Mode } from './components/InputBar'
+import GoalPicker from './components/GoalPicker'
 import SettingsDialog from './components/SettingsDialog'
 import QuestionCard from './components/QuestionCard'
 import QuickSwitcher from './components/QuickSwitcher'
@@ -16,7 +17,7 @@ import TutorPanel from './components/TutorPanel'
 import PromptDialog, { type DialogSpec } from './components/PromptDialog'
 import PdfStudyPane from './components/pdfstudy/PdfStudyPane'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
-import type { AgentStatus, GraphData, PendingQuestion, PlanInfo, SessionMeta, Settings, Tab, ToastItem, TreeNode, WriterAttachment } from './types'
+import type { AgentStatus, GoalInfo, GraphData, PendingQuestion, SessionMeta, Settings, Tab, ToastItem, TreeNode, WriterAttachment  } from './types'
 
 const IdeShell = lazy(() => import('./components/ide/IdeShell'))
 
@@ -56,7 +57,8 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState('')
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [appearance, setAppearance] = useState<Appearance>(() => loadAppearance())
-  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null)
+  const [goals, setGoals] = useState<GoalInfo[]>([])
+  const [selectedGoalId, setSelectedGoalId] = useState<string>(() => localStorage.getItem('la-goal') || '')
   const [learnedFlow, setLearnedFlow] = useState<string | null>(null) // 正在检查掌握情况的笔记路径
   const [dialog, setDialog] = useState<DialogSpec | null>(null)
   const [celebratePath, setCelebratePath] = useState<string | null>(null)
@@ -106,10 +108,12 @@ export default function App() {
   const learnedFlowRef = useRef<string | null>(null)
   learnedFlowRef.current = learnedFlow
 
-  const refreshPlan = () =>
-    fetch('/api/plan')
-      .then((r) => r.json())
-      .then(setPlanInfo)
+  const refreshGoals = () =>
+    api.getGoals()
+      .then((r) => {
+        setGoals(r.goals)
+        setSelectedGoalId((cur) => (cur && r.goals.some((g) => g.id === cur) ? cur : ''))
+      })
       .catch(() => undefined)
 
   // refs：SSE 回调里要读到的最新状态
@@ -169,7 +173,7 @@ export default function App() {
   useEffect(() => {
     refreshTree()
     refreshSessions()
-    refreshPlan()
+    refreshGoals()
     api.getSettings().then(setSettings).catch(() => undefined)
     api.getGraph().then(setGraph).catch(() => undefined)
     // 默认打开欢迎页
@@ -572,7 +576,7 @@ export default function App() {
     flushSaves()
     setAgent({ running: true, stage: 'thinking', message: '正在思考…' })
     try {
-      await api.sendAgent(text, modeOverride ?? mode, attachments)
+      await api.sendAgent(text, modeOverride ?? mode, attachments, selectedGoalId || undefined)
     } catch (e) {
       setAgent({ running: false, stage: 'idle', message: '' })
       toast((e as Error).message, true)
@@ -683,7 +687,7 @@ export default function App() {
         setPendingQuestion(null)
         refreshTree()
         refreshSessions()
-        refreshPlan()
+        refreshGoals()
         api.getGraph().then(setGraph).catch(() => undefined)
         toast('知识库已切换')
         break
@@ -760,7 +764,7 @@ export default function App() {
         }
         refreshTree()
         refreshSessions()
-        refreshPlan()
+        refreshGoals()
         api.getGraph().then(setGraph).catch(() => undefined)
         if (error) toast(error, true)
         break
@@ -1067,19 +1071,7 @@ export default function App() {
           files={flattenFiles(tree)}
           engine={settings?.engine}
           onOpenEngineSettings={() => setSettingsOpen(true)}
-          planChip={
-            planInfo?.exists && planInfo.goal ? (
-              <button
-                className="plan-chip"
-                title="打开目标与计划（Agent/目标与计划.md）"
-                onClick={() => void openNote(planInfo.path)}
-              >
-                <span className="material-symbols-rounded">flag</span>
-                {planInfo.goal}
-                {planInfo.currentStage ? <span className="pc-stage">· {planInfo.currentStage}</span> : null}
-              </button>
-            ) : undefined
-          }
+          planChip={<GoalPicker goals={goals} selectedId={selectedGoalId} onSelect={(id) => { setSelectedGoalId(id); localStorage.setItem('la-goal', id) }} />}
           topSlot={
             pendingQuestion ? (
               <QuestionCard

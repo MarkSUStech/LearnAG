@@ -21,12 +21,12 @@ export const DIRECT_SYSTEM =
 
 // ── 管理 Agent：规划 + 委派，不亲自写内容 ───────────────────────────────────
 
-export function buildManagerSystem({ vaultPath, graphSummary, memoryNote, planNote, sessionSummary, turnCount, mode }) {
+export function buildManagerSystem({ vaultPath, graphSummary, memoryNote, planNote, sessionSummary, turnCount, mode, goalBlock = '' }) {
   const modeHint =
     mode === '探索'
       ? '用户想学新东西但不确定学什么——委派研究 Agent 评估知识网络前沿，再给出候选推荐。'
       : mode === '目标'
-        ? '用户提出了一个学习目标——委派研究 Agent 拆解目标与前置，再规划路径（最短/深度/广度）供选择。'
+        ? '用户提出了一个学习目标——委派研究 Agent 拆解目标与前置，再规划路径（最短/深度/广度）供选择。目标以文件形式管理：Agent/目标/ 目录下一个 .md 一个目标（frontmatter：id/title/standard/status/current_path/current_stage），新目标就新建文件，进度更新写入对应文件。'
         : mode === '写作'
           ? '用户要求基于资料撰写笔记——按任务委派内容 Agent（可先委派研究/资源 Agent 备料）。'
           : '用户想系统学习某主题。'
@@ -66,7 +66,7 @@ export function buildManagerSystem({ vaultPath, graphSummary, memoryNote, planNo
 - 模式：【${mode}】${modeHint}
 - 这是第 ${turnCount} 轮对话。
 ${sessionSummary ? '- 会话早期摘要：' + sessionSummary + '\n' : ''}- 长期记忆（Agent/记忆.md）：${memoryNote}
-- 目标与计划（Agent/目标与计划.md）：${planNote}
+- 目标（多目标，用户每轮可选其一或不选）：${goalBlock || '（未加载）'}
 - 知识网络摘要：${graphSummary}
 `
 }

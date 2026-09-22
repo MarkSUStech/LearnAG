@@ -41,6 +41,16 @@ export interface WriterAttachment {
   scope?: { chapter?: string; from?: number; to?: number }
 }
 
+export interface GoalInfo {
+  id: string
+  title: string
+  standard: string
+  status: string
+  currentPath: string
+  currentStage: string
+  path: string
+}
+
 export interface PlanInfo {
   exists: boolean
   goal: string
