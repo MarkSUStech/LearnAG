@@ -17,8 +17,12 @@ if (!katexAny.__laTagPatched) {
   katexAny.__laTagPatched = true
   const origToString = katex.renderToString.bind(katex)
   const origRender = katex.render.bind(katex)
-  katexAny.renderToString = (tex: string, opts?: { displayMode?: boolean }) =>
-    origToString(inlineTagSafe(String(tex), opts?.displayMode), opts)
-  katexAny.render = (tex: string, el: HTMLElement, opts?: { displayMode?: boolean }) =>
-    origRender(inlineTagSafe(String(tex), opts?.displayMode), el, opts)
+  // output 默认 'html'：KaTeX 默认同时生成 HTML 树 + MathML 冗余树，公式密集的
+  // 笔记 DOM 直接翻倍（排版/绘制的最大来源之一）。无障碍朗读在此场景让位性能。
+  const withDefaults = (opts?: { displayMode?: boolean; output?: string }) =>
+    ({ output: 'html', ...opts }) as any
+  katexAny.renderToString = (tex: string, opts?: { displayMode?: boolean; output?: string }) =>
+    origToString(inlineTagSafe(String(tex), opts?.displayMode), withDefaults(opts))
+  katexAny.render = (tex: string, el: HTMLElement, opts?: { displayMode?: boolean; output?: string }) =>
+    origRender(inlineTagSafe(String(tex), opts?.displayMode), el, withDefaults(opts))
 }

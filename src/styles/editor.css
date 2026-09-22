@@ -672,3 +672,22 @@ sup[data-type='footnote_reference']:hover {
   font-size: 0.88em;
   opacity: 0.75;
 }
+
+/* ── Obsidian 同款渲染管线：GPU 合成 + 屏外跳过 ─────────────────────────
+   content-visibility:auto 让浏览器完全跳过屏外块的排版与绘制（滚动/打开
+   不再被整篇文档的布局成本拖住）；contain-intrinsic-size 用估算高度保持
+   滚动条稳定，块滚入视口时以真实尺寸替换。编辑器滚动容器交给合成器。 */
+.milkdown-editor-host .ProseMirror > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+/* 编辑器滚动容器：合成器加速滚动提示 */
+.milkdown-editor-host .editor-scroll,
+.milkdown-editor-host {
+  will-change: scroll-position;
+}
+/* 预览/答疑面板同策略 */
+.rich-md > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
