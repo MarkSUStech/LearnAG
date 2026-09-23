@@ -65,8 +65,18 @@
   border-bottom: 1px solid var(--border);
   padding: 6px 8px 0;
   gap: 2px;
+  min-height: 40px;
+}
+/* 只有标签区横向滚动；两端按钮固定，下拉不被裁剪 */
+.tabbar-scroll {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
+  min-width: 0;
+  flex: 1;
   min-height: 40px;
 }
 .tab {
@@ -118,12 +128,6 @@
   border-radius: 50%;
   background: var(--accent);
   flex: none;
-}
-.tabbar-end {
-  margin-left: auto;
-  display: flex;
-  gap: 2px;
-  padding-bottom: 4px;
 }
 
 /* ── 全局微动效 ───────────────────────────────────────────────────────── */
@@ -345,7 +349,6 @@
 /* ── 标签折叠区：超出窗口的标签收进右端折叠按钮 ────────────────────── */
 .tab-fold {
   position: relative;
-  margin-left: auto;
   display: flex;
   align-items: flex-end;
   padding-bottom: 4px;

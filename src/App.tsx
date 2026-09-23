@@ -143,6 +143,11 @@ export default function App() {
     setActiveIdx(0)
     return next
   }
+
+  // 活动标签始终滚入可视范围（标签区横向滚动时）
+  useEffect(() => {
+    document.querySelector('.tabbar-scroll .tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeIdx])
   const appViewRef = useRef(appView)
   appViewRef.current = appView
   const dragTabRef = useRef<{ idx: number; from: 'primary' | 'split' } | null>(null)
@@ -931,6 +936,7 @@ export default function App() {
           >
             <span className="material-symbols-rounded">{sidebarCollapsed ? 'menu' : 'left_panel_close'}</span>
           </button>
+          <div className="tabbar-scroll">
           {tabs.slice(0, MAX_VISIBLE_TABS).map((tab, i) => {
             const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
             const tabTitle =
@@ -1018,8 +1024,8 @@ export default function App() {
               </span>
             </div>
           )}
-          <div className="tabbar-end" />
-          {tabs.length > MAX_VISIBLE_TABS && (
+          </div>
+                    {tabs.length > MAX_VISIBLE_TABS && (
             <div className="tab-fold">
               <button
                 className={`tab-fold-btn${foldOpen ? ' open' : ''}`}
