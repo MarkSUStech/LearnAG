@@ -855,8 +855,19 @@ app.use((req, res, next) => {
 
 const distDir = path.join(__dirname, '..', 'dist')
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir))
+  // index.html 禁止缓存（避免浏览器拿着旧 bundle 与新版本不一致）；
+  // 带哈希的静态资源可长期缓存
+  app.use(
+    express.static(distDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-store')
+        else res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      },
+    }),
+  )
   app.get(/^\/(?!api\/).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
     res.sendFile(path.join(distDir, 'index.html'))
   })
 }
