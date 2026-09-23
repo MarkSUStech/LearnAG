@@ -25,6 +25,8 @@ import {
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
 import { zcodeAvailable, zcodeCliPath, zcodeVersion, ensureZcodeMcp } from './agent/zcode.js'
+import { searchImages, downloadImageToVault } from './agent/imgsearch.js'
+import { extractPdfImages } from './agent/pdfimages.js'
 import { syncNoteToGraph } from './agent/tools.js'
 import { renderDiagram } from './render.js'
 import { streamChat } from './agent/runner.js'
@@ -423,6 +425,38 @@ app.post('/internal/zcode/search', async (req, res) => {
     if (!q) return res.status(400).json({ error: 'query 不能为空' })
     console.log('[zcode-mcp] search_knowledge:', q.slice(0, 80))
     res.json(await rag.search(q, Math.min(12, Number(req.body?.max_results) || 6)))
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+// search_images：联网搜图 + SigLIP 语义重排
+app.post('/internal/zcode/img-search', async (req, res) => {
+  try {
+    const q = String(req.body?.query ?? '').trim()
+    if (!q) return res.status(400).json({ error: 'query 不能为空' })
+    console.log('[zcode-mcp] search_images:', q.slice(0, 80))
+    res.json(await searchImages(q, Math.min(10, Number(req.body?.count) || 6)))
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+// download_image：下载图片进 vault
+app.post('/internal/zcode/img-download', async (req, res) => {
+  try {
+    console.log('[zcode-mcp] download_image:', String(req.body?.url || '').slice(0, 80))
+    res.json(await downloadImageToVault({ url: String(req.body?.url ?? ''), path: req.body?.path ? String(req.body.path) : undefined }))
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+// extract_pdf_images：提取 PDF 内嵌图片
+app.post('/internal/zcode/pdf-images', async (req, res) => {
+  try {
+    console.log('[zcode-mcp] extract_pdf_images:', String(req.body?.path || '').slice(0, 80))
+    res.json(await extractPdfImages({ path: String(req.body?.path ?? ''), min_size: req.body?.min_size, force: Boolean(req.body?.force) }))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }

@@ -49,6 +49,49 @@ const TOOLS = [
       required: ['query'],
     },
   },
+  {
+    name: 'search_images',
+    description:
+      '联网搜索真实图片并按图文语义相关度重排（本地 SigLIP 模型）。返回图片列表（标题/原图链接/缩略图/来源页/相关度）。' +
+      '为笔记配真实图片（照片/实物/网络示意图）时使用；query 建议用英文。拿到结果后用 download_image 下载选中的图。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '图片检索词，英文效果最佳（对象+图类型，如 "transformer architecture diagram"）' },
+        count: { type: 'number', description: '返回条数，默认 6，最多 10' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'download_image',
+    description:
+      '把一张网络图片下载进用户知识库（默认 assets/images/），返回可嵌入笔记的相对路径。' +
+      '与 search_images 配合：选中后下载，再用 Write/Edit 在笔记里以 ![](返回的路径) 引用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '图片直链（search_images 结果里的 image_url；下载失败可改用缩略图 thumb_url）' },
+        path: { type: 'string', description: '保存路径（vault 内相对路径）。默认自动命名到 assets/images/' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'extract_pdf_images',
+    description:
+      '提取用户知识库中一篇 PDF 的全部内嵌图片（教材插图/图表/照片），解码为 PNG 存入 assets/pdf/<PDF名>/ 并返回清单（文件/页码/尺寸）。' +
+      '为笔记配教材原图时使用；重复提取直接返回已有清单。嵌入时注明来源 PDF 与页码。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'PDF 在 vault 内的相对路径' },
+        min_size: { type: 'number', description: '图片最小边长（像素），默认 200，过滤小图标' },
+        force: { type: 'boolean', description: '已提取过时是否强制重新提取' },
+      },
+      required: ['path'],
+    },
+  },
 ]
 
 function post(pathName, body, timeoutMs) {
@@ -91,6 +134,30 @@ async function callTool(name, args) {
     if (!res || !res.ok) {
       return { isError: true, content: [{ type: 'text', text: '知识库检索服务不可用；请改用 Glob/Grep 直接检索文件。' }] }
     }
+    const r = await res.json().catch(() => ({}))
+    return { content: [{ type: 'text', text: JSON.stringify(r) }] }
+  }
+  if (name === 'search_images') {
+    const res = await post('/internal/zcode/img-search', args, 120000).catch((e) => (e?.name === 'TimeoutError' ? { ok: false, timeout: true } : null))
+    if (res && res.timeout) {
+      return { isError: true, content: [{ type: 'text', text: '搜图超时。请放弃联网搜图，改用 mermaid 绘制示意图。' }] }
+    }
+    if (!res || !res.ok) return { isError: true, content: [{ type: 'text', text: '搜图服务不可用；请改用 mermaid 绘制示意图。' }] }
+    const r = await res.json().catch(() => ({}))
+    return { content: [{ type: 'text', text: JSON.stringify(r) }] }
+  }
+  if (name === 'download_image') {
+    const res = await post('/internal/zcode/img-download', args, 60000).catch(() => null)
+    if (!res || !res.ok) {
+      const j = res ? await res.json().catch(() => ({})) : {}
+      return { isError: true, content: [{ type: 'text', text: '下载失败：' + (j.error || '服务不可用') + '。可换用结果里的缩略图地址重试，或放弃配图。' }] }
+    }
+    const r = await res.json().catch(() => ({}))
+    return { content: [{ type: 'text', text: JSON.stringify(r) }] }
+  }
+  if (name === 'extract_pdf_images') {
+    const res = await post('/internal/zcode/pdf-images', args, 180000).catch(() => null)
+    if (!res || !res.ok) return { isError: true, content: [{ type: 'text', text: 'PDF 图片提取失败；请确认 path 是 vault 内的 PDF，或放弃该方式。' }] }
     const r = await res.json().catch(() => ({}))
     return { content: [{ type: 'text', text: JSON.stringify(r) }] }
   }

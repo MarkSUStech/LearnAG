@@ -648,6 +648,7 @@ function buildZcodePrompt({ userMessage, mode, attachments, goalBlock = '' }) {
 - 需要向用户提问（摸底测评、出题检查掌握程度、候选路径选择）时，用 ask_user 工具：用户会在界面上看到提问卡片并作答，工具结果就是用户的回答（answer.value；被跳过/取消也要得体处理）。每次只问一个问题；题目涉及用户看不到的内容时放进 code 参数
 - 出题测评纪律：一道一问，跨层级搭配（概念判断 judge → 识记 single → 理解/应用 text）；「不会就是不会」——答错或答「不会」只简短确认并记录薄弱点，立即下一题，测评环节不讲解；所有题型用户都可能自定义回答，按内容严肃判定，空洞/抄题面视为未通过
 - 动笔/回答前**必须先调用 search_knowledge** 语义检索用户知识库（覆盖全部笔记、PDF 原文、用户在 PDF 里的标注与卡片——这些深层内容 Grep/Glob 搜不到）；检索命中后只用 Read 读取它给出的具体文件，不要用 Grep/Glob 大范围翻找笔记正文
+- 需要真实图片配图（教材插图/照片/实物图）时有两条通道：**extract_pdf_images** 从用户知识库的 PDF 里提取教材原图（最优先，学术引用最佳，注明来源 PDF 与页码）；**search_images** 联网搜图（英文关键词）+ **download_image** 下载到 assets/images/ 后用 ![](路径) 引用。示意图/流程/关系类内容仍然用 mermaid 自己画，不要搜图
 - 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
 - 不要修改 .obsidian、.agent 与 Agent/工作台.md（工作台由系统写入）
 - 只操作上述 vault 内的文件，不要动用户电脑上的其他东西
