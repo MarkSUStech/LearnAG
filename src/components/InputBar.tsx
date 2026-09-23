@@ -16,6 +16,7 @@ interface Props {
   files: string[]
   engine?: 'api' | 'zcode'
   onOpenEngineSettings?: () => void
+  detail?: { thought: string; tools: { name: string; detail: string }[] } | null
 }
 
 /** agent 面板（专家图标 / \ 唤起）：分组展示全部全局 agent */
@@ -43,8 +44,10 @@ const PLACEHOLDER: Record<Mode, string> = {
   写作: '描述笔记要求，例如：根据这篇论文和我的标注写一篇笔记…',
 }
 
-export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files, engine, onOpenEngineSettings }: Props) {
+export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files, engine, onOpenEngineSettings, detail }: Props) {
   const [text, setText] = useState('')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const hasDetail = Boolean(detail && (detail.thought || (detail.tools && detail.tools.length)))
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
   const [menuOpen, setMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -114,10 +117,38 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
         </button>
         {planChip}
         {topSlot}
-        <div className={`status-line ${agent.message.startsWith('出错') ? 'err' : ''}`}>
+        <div
+          className={`status-line ${agent.message.startsWith('出错') ? 'err' : ''}${hasDetail ? ' clickable' : ''}${detailOpen ? ' open' : ''}`}
+          title={hasDetail ? '点击展开思考过程与工具调用' : undefined}
+          onClick={() => hasDetail && setDetailOpen((o) => !o)}
+        >
           {agent.running && <span className="material-symbols-rounded spin">progress_activity</span>}
           {agent.message && <span>{agent.message}</span>}
+          {hasDetail && detail && (
+            <span className="material-symbols-rounded detail-caret">{detailOpen ? 'expand_less' : 'expand_more'}</span>
+          )}
         </div>
+        {detailOpen && hasDetail && detail && (
+          <div className="agent-detail-panel">
+            {detail.tools.length > 0 && (
+              <div className="ad-section">
+                <div className="ad-label">工具调用</div>
+                {detail.tools.map((t, i) => (
+                  <div key={i} className="ad-tool">
+                    <span className="ad-name">{t.name}</span>
+                    <span className="ad-detail">{t.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {detail.thought && (
+              <div className="ad-section">
+                <div className="ad-label">思考过程</div>
+                <pre className="ad-thought">{detail.thought}</pre>
+              </div>
+            )}
+          </div>
+        )}
         <div className="input-bar">
           <div className="ib-left">
             <button

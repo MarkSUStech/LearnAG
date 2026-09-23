@@ -288,7 +288,7 @@ export function runZcodeTurn({ prompt, cwd, resumeSessionId, signal, maxTurns = 
             if (p.kind === 'text_delta' && typeof p.delta === 'string' && p.delta) {
               onEvent?.({ type: 'text-delta', text: p.delta })
             } else if (p.kind === 'reasoning_delta') {
-              onEvent?.({ type: 'reasoning-delta' })
+              onEvent?.({ type: 'reasoning-delta', text: typeof p.delta === 'string' ? p.delta : '' })
             }
           } else if (ev.type === 'tool.updated') {
             if (p.kind === 'scheduled' && p.toolCallId) {

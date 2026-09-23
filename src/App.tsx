@@ -62,6 +62,7 @@ export default function App() {
   const [appearance, setAppearance] = useState<Appearance>(() => loadAppearance())
   const [goals, setGoals] = useState<GoalInfo[]>([])
   const [selectedGoalId, setSelectedGoalId] = useState<string>(() => localStorage.getItem('la-goal') || '')
+  const [agentDetail, setAgentDetail] = useState<{ thought: string; tools: { name: string; detail: string }[] } | null>(null)
   const [learnedFlow, setLearnedFlow] = useState<string | null>(null) // 正在检查掌握情况的笔记路径
   const [dialog, setDialog] = useState<DialogSpec | null>(null)
   const [celebratePath, setCelebratePath] = useState<string | null>(null)
@@ -751,6 +752,9 @@ export default function App() {
         })
         setAgent((a) => ({ ...a, running: true, message: '等待你的回答…' }))
         break
+      case 'agent-detail':
+        setAgentDetail({ thought: (e.thought as string) || '', tools: (e.tools as { name: string; detail: string }[]) || [] })
+        break
       case 'agent-question-closed':
         setPendingQuestion((q) => (q && q.id === e.id ? null : q))
         break
@@ -1152,6 +1156,7 @@ export default function App() {
           files={flattenFiles(tree)}
           engine={settings?.engine}
           onOpenEngineSettings={() => setSettingsOpen(true)}
+          detail={agentDetail}
           planChip={<GoalPicker goals={goals} selectedId={selectedGoalId} onSelect={(id) => { setSelectedGoalId(id); localStorage.setItem('la-goal', id) }} />}
           topSlot={
             pendingQuestion ? (

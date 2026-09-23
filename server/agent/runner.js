@@ -437,6 +437,91 @@ export function activeRunSignal() {
 }
 
 /**
+ * 运行明细记录器：累积思考过程与工具调用，节流快照推给前端
+ * （状态行点击展开的「思考 / 工具调用」面板数据源）。
+ */
+function makeDetailRecorder(emit) {
+  const d = { thought: '', tools: [] }
+  let lastEmit = 0
+  const push = (force) => {
+    const now = Date.now()
+    if (!force && now - lastEmit < 400) return
+    lastEmit = now
+    try {
+      emit({ type: 'agent-detail', thought: d.thought.slice(-4000), tools: d.tools.slice(-20) })
+    } catch {
+      /* 推送失败不影响运行 */
+    }
+  }
+  return {
+    clear() {
+      d.thought = ''
+      d.tools = []
+      push(true)
+    },
+    addThought(text) {
+      if (!text) return
+      d.thought += text
+      push()
+    },
+    addTool(name, detail) {
+      d.tools.push({ name: String(name || 'tool'), detail: String(detail ?? '').slice(0, 220), ts: Date.now() })
+      if (d.tools.length > 30) d.tools.shift()
+      push(true)
+    },
+  }
+}
+
+/** 工具入参摘要（状态面板一行显示用） */
+function summarizeToolInput(name, args = {}) {
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = args[k]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+    return ''
+  }
+  switch (name) {
+    case 'write_note':
+      return '写入 ' + pick('path')
+    case 'read_note':
+      return '读取 ' + pick('path') + (args.chapter ? ` 「${args.chapter}」` : args.page ? ` 第${args.page}页` : '')
+    case 'web_search':
+    case 'webSearch':
+      return '搜索: ' + pick('query')
+    case 'search_knowledge':
+      return 'RAG: ' + pick('query')
+    case 'search_images':
+      return '搜图: ' + pick('query')
+    case 'download_image':
+      return '下载图 → ' + pick('path')
+    case 'download_paper':
+      return '下载论文 ' + pick('dir')
+    case 'web_fetch':
+    case 'webFetch':
+      return '抓取 ' + pick('url')
+    case 'ask_user':
+      return pick('question')
+    case 'delegate':
+      return `委派 ${pick('role')}：` + pick('task')
+    case 'Read':
+    case 'Write':
+    case 'Edit':
+      return `${name === 'Read' ? '读取' : '写入'} ${pick('file_path')}`
+    case 'Bash':
+      return pick('command')
+    case 'Grep':
+      return '搜索 ' + pick('pattern')
+    case 'Glob':
+      return '列出 ' + pick('pattern')
+    default: {
+      const j = JSON.stringify(args)
+      return j.length > 160 ? j.slice(0, 160) + '…' : j
+    }
+  }
+}
+
+/**
  * 发出提问卡片并挂起等待用户作答（API 模式 ask_user 工具与 ZCode MCP ask_user 共用）。
  * 回答会记录到工作台并关闭卡片。answer: {value}|{files}|{cancelled}|{skipped}
  */
@@ -597,6 +682,8 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
   if (!zcodeAvailable()) throw new Error('未找到本机 ZCode CLI，请在设置中检查路径，或切回 API 引擎')
   const abort = new AbortController()
   currentRun = { controller: abort, writeActivity: new Map() }
+  const runDetail = makeDetailRecorder(emit)
+  runDetail.clear()
   const settings = loadSettings()
   const sessionId = sessions.ensureActive()
 
@@ -605,7 +692,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
   const state = { reply: '', lastStreamEmit: 0, lastThinkEmit: 0, pendingFiles: new Map() }
   const onEvent = (e) => {
     if (e.type === 'reasoning-delta') {
-      // 长推理阶段给用户一个活着的心跳（节流）
+      runDetail.addThought(e.text || '')
       const now = Date.now()
       if (now - state.lastThinkEmit > 4000) {
         state.lastThinkEmit = now
@@ -635,7 +722,8 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
           return
         }
       }
-      emit({ type: 'agent-status', stage: 'tool', tool: e.name || 'tool', message: 'ZCode 调用工具 ' + (e.name || '…') })
+      runDetail.addTool(e.name, summarizeToolInput(e.name, e.input || {}))
+          emit({ type: 'agent-status', stage: 'tool', tool: e.name || 'tool', message: 'ZCode 调用工具 ' + (e.name || '…') })
       return
     }
     if (e.type === 'tool-end') {
@@ -717,6 +805,8 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
   if (currentRun) throw new Error('已有任务在进行中')
   const abort = new AbortController()
   currentRun = { controller: abort, writeActivity: new Map() }
+  const runDetail = makeDetailRecorder(emit)
+  runDetail.clear()
   const settings = loadSettings()
   if (!settings.apiKey) {
     currentRun = null
@@ -804,6 +894,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
           const reasoning = delta.reasoning_content ?? delta.reasoning
           if (reasoning) {
             assistant.reasoning_content = (assistant.reasoning_content || '') + reasoning
+            runDetail?.addThought(reasoning)
           }
           if (Array.isArray(delta.tool_calls)) {
             for (const tc of delta.tool_calls) {
@@ -879,6 +970,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
             message: tc.name === 'ask_user' ? '等待你的回答…' : '调用工具 ' + tc.name,
           })
           const args = safeParse(tc.args) ?? {}
+          runDetail?.addTool(tc.name, summarizeToolInput(tc.name, args))
 
           if (tc.name === 'ask_user') {
             // 结构化提问：挂起等用户作答（卡片/停止/自定义回答共用逻辑见 suspendForQuestion）
