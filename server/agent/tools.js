@@ -297,9 +297,9 @@ export const toolDefs = [
         'research（研究：检索笔记/PDF/RAG/知识网络，返回带来源的事实）、' +
         'resource（资源推荐：联网检索网页与论文并整理入库）、' +
         'content（内容写作：按任务撰写或修改笔记）、' +
-        'visualize（可视化：为笔记绘制或修改 mermaid 图表）、' +
-        'scaffold（脚手架：组装最终产出、沉淀知识网络）。' +
-        '委派前把任务描述写具体：目标、输入素材、输出路径、要点与判定标准。',
+        'visualize（可视化：为笔记配真实图片或图表——PDF 提图/联网搜图/mermaid）、' +
+        'scaffold（脚手架：把内容产出按用户容易理解的方式重排序与改写，并沉淀知识网络）。' +
+        '委派前把任务描述写具体：目标、输入素材、输出路径、要点与判定标准。内容类笔记的典型流水线：research → content → visualize（配图）→ scaffold（面向用户重排润色与沉淀）。',
       parameters: {
         type: 'object',
         properties: {

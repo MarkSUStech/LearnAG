@@ -8,6 +8,7 @@ import { toolDefs, executeTool } from './tools.js'
 import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
 import { runSubAgent, subAgentLabel } from './subagent.js'
+import { SUB_AGENTS } from './roles.js'
 import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId, ensureZcodeMcp } from './zcode.js'
 import { goalContextBlock } from '../goals.js'
 
@@ -648,6 +649,7 @@ function buildZcodePrompt({ userMessage, mode, attachments, goalBlock = '' }) {
 - 需要向用户提问（摸底测评、出题检查掌握程度、候选路径选择）时，用 ask_user 工具：用户会在界面上看到提问卡片并作答，工具结果就是用户的回答（answer.value；被跳过/取消也要得体处理）。每次只问一个问题；题目涉及用户看不到的内容时放进 code 参数
 - 出题测评纪律：一道一问，跨层级搭配（概念判断 judge → 识记 single → 理解/应用 text）；「不会就是不会」——答错或答「不会」只简短确认并记录薄弱点，立即下一题，测评环节不讲解；所有题型用户都可能自定义回答，按内容严肃判定，空洞/抄题面视为未通过
 - 动笔/回答前**必须先调用 search_knowledge** 语义检索用户知识库（覆盖全部笔记、PDF 原文、用户在 PDF 里的标注与卡片——这些深层内容 Grep/Glob 搜不到）；检索命中后只用 Read 读取它给出的具体文件，不要用 Grep/Glob 大范围翻找笔记正文
+- 复杂学习任务按多 Agent 协作推进：你是管理者，通过 delegate 工具把专项工作委派给专职子 Agent（research 研究/resource 资源/content 内容写作/visualize 可视化配图/scaffold 组装沉淀），委派时把目标、素材路径、输出路径写清楚；简单步骤你可以直接自己做，不必事事委派
 - 需要真实图片配图（教材插图/照片/实物图）时有两条通道：**extract_pdf_images** 从用户知识库的 PDF 里提取教材原图（最优先，学术引用最佳，注明来源 PDF 与页码）；**search_images** 联网搜图（英文关键词）+ **download_image** 下载到 assets/images/ 后用 ![](路径) 引用。示意图/流程/关系类内容仍然用 mermaid 自己画，不要搜图
 - 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
 - 不要修改 .obsidian、.agent 与 Agent/工作台.md（工作台由系统写入）
@@ -927,7 +929,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
                     })
                   }
                 }
-                if (!assistant._writingNoted) {
+                if (partial.path && !assistant._writingNoted) {
                   assistant._writingNoted = true
                   emit({ type: 'agent-status', stage: 'writing', path: partial.path, message: '正在写入 ' + partial.path })
                 }
@@ -1105,4 +1107,71 @@ export async function testConnection() {
   }
   const json = await res.json()
   return { ok: true, reply: json.choices?.[0]?.message?.content ?? '' }
+}
+
+
+/** ZCode 模式的子 Agent 委派：起一个按角色聚焦的 ZCode 子进程执行专项任务，
+ *  事件（思考/工具/写文件）转发到与主任务相同的 SSE 通道。返回子 Agent 的总结文本。 */
+export async function runZcodeSubAgent({ role, task, context = '', emit, signal, attachments = [] }) {
+  const def = SUB_AGENTS[role]
+  if (!def) throw new Error('未知子 Agent：' + role)
+  emit({ type: 'agent-status', stage: 'tool', message: subAgentLabel(role) + ' 工作中：' + String(task || '').slice(0, 40) })
+  const prompt =
+    def.system +
+    '\n\n## 共享工作环境\n' +
+    '- 当前工作目录就是用户的知识库（Obsidian vault）根目录。semantic 检索用 search_knowledge（MCP 工具，覆盖笔记/PDF/用户标注）\n' +
+    '- 知识网络：知识图谱.json + 知识图谱/<知识点>.md（frontmatter: id/tags/mastery/status/related/date），写知识图谱/<点>.md 后系统自动同步图谱\n' +
+    '- 配图：教材原图用 extract_pdf_images 提取、网络图用 search_images + download_image（存 assets/images/），笔记里 ![](相对路径) 引用\n' +
+    '- 不要修改 .obsidian、.agent 与 Agent/工作台.md；不要调用 ask_user（子 Agent 无提问通道）\n' +
+    (context ? '\n## 管理者提供的上下文\n' + context + '\n' : '') +
+    '\n## 本次专项任务\n' +
+    task +
+    '\n\n完成后用一段简短的中文总结你做了什么、产出在哪里、下一步建议。'
+  const state = { reply: '', lastThinkEmit: 0, pendingFiles: new Map() }
+  const ZCODE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+  const onEvent = (e) => {
+    if (e.type === 'reasoning-delta') {
+      const now = Date.now()
+      if (now - state.lastThinkEmit > 4000) {
+        state.lastThinkEmit = now
+        emit({ type: 'agent-status', stage: 'thinking', message: subAgentLabel(role) + ' 思考中…' })
+      }
+      return
+    }
+    if (e.type === 'text-delta') {
+      state.reply += e.text
+      return
+    }
+    if (e.type === 'tool-start') {
+      const fp = String(e.input?.file_path || '')
+      const rel = fp && ZCODE_WRITE_TOOLS.has(e.name) ? relFromVault(fp) : null
+      if (rel && /\.md$/i.test(rel)) {
+        state.pendingFiles.set(e.callId, rel)
+        if (typeof e.input?.content === 'string') {
+          currentRun?.writeActivity?.set(rel, Date.now())
+          emit({ type: 'agent-write', path: rel, content: e.input.content, done: false })
+          emit({ type: 'agent-status', stage: 'writing', path: rel, message: '正在写入 ' + rel })
+          return
+        }
+      }
+      emit({ type: 'agent-status', stage: 'tool', tool: e.name || 'tool', message: subAgentLabel(role) + ' 调用工具 ' + (e.name || '…') })
+      return
+    }
+    if (e.type === 'tool-end') {
+      const rel = state.pendingFiles.get(e.callId)
+      state.pendingFiles.delete(e.callId)
+      if (rel && e.ok !== false && !signal?.aborted) {
+        try {
+          const content = vault.readFile(rel)
+          currentRun?.writeActivity?.set(rel, Date.now())
+          emit({ type: 'agent-write', path: rel, content, done: true })
+          emit({ type: 'agent-status', stage: 'written', path: rel, message: '已写入 ' + rel })
+        } catch { /* 文件可能被删除 */ }
+      }
+      return
+    }
+  }
+  const r = await runZcodeTurn({ prompt, cwd: vault.getVaultRoot(), signal, onEvent })
+  emit({ type: 'agent-status', stage: 'tool', message: subAgentLabel(role) + ' 完成' })
+  return (r.response || '').trim() || state.reply.trim()
 }

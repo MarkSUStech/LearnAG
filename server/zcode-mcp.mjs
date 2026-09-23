@@ -92,6 +92,23 @@ const TOOLS = [
       required: ['path'],
     },
   },
+  {
+    name: 'delegate',
+    description:
+      '把一项专项工作委派给专职子 Agent（在独立的 ZCode 会话中执行），完成后返回其总结。可选 role：' +
+      'research（研究：检索笔记/PDF/知识网络，产出事实结论）、resource（资源：联网找学习资源）、' +
+      'content（内容：撰写/修改笔记）、visualize（可视化：配图/图表）、scaffold（把内容产出按用户容易理解的方式重排与改写，并沉淀知识网络）。' +
+      '复杂学习任务应拆解并依次委派；委派描述要写清楚目标、素材路径、输出路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        role: { type: 'string', enum: ['research', 'resource', 'content', 'visualize', 'scaffold'], description: '子 Agent 类型' },
+        task: { type: 'string', description: '具体任务：目标、素材路径、输出路径与要求' },
+        context: { type: 'string', description: '可选。随任务附带的上下文（研究结果、用户要求原文等）' },
+      },
+      required: ['role', 'task'],
+    },
+  },
 ]
 
 function post(pathName, body, timeoutMs) {
@@ -160,6 +177,18 @@ async function callTool(name, args) {
     if (!res || !res.ok) return { isError: true, content: [{ type: 'text', text: 'PDF 图片提取失败；请确认 path 是 vault 内的 PDF，或放弃该方式。' }] }
     const r = await res.json().catch(() => ({}))
     return { content: [{ type: 'text', text: JSON.stringify(r) }] }
+  }
+  if (name === 'delegate') {
+    const res = await post('/internal/zcode/delegate', args, 900000).catch((e) => (e?.name === 'TimeoutError' ? { ok: false, timeout: true } : null))
+    if (res && res.timeout) {
+      return { isError: true, content: [{ type: 'text', text: '子 Agent 委派超时（15 分钟）。请收回该任务自行完成，或换更小的委派粒度。' }] }
+    }
+    if (!res || !res.ok) {
+      const j = res ? await res.json().catch(() => ({})) : {}
+      return { isError: true, content: [{ type: 'text', text: '委派失败：' + (j.error || '服务不可用') + '。请收回该任务自行完成。' }] }
+    }
+    const r = await res.json().catch(() => ({}))
+    return { content: [{ type: 'text', text: JSON.stringify({ result: r.result ?? '' }) }] }
   }
   return { isError: true, content: [{ type: 'text', text: '未知工具：' + name }] }
 }

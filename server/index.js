@@ -26,6 +26,8 @@ import {
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
 import { zcodeAvailable, zcodeCliPath, zcodeVersion, ensureZcodeMcp } from './agent/zcode.js'
 import { searchImages, downloadImageToVault } from './agent/imgsearch.js'
+import { runZcodeSubAgent } from './agent/runner.js'
+import { subAgentLabel } from './agent/subagent.js'
 import { extractPdfImages } from './agent/pdfimages.js'
 import { syncNoteToGraph } from './agent/tools.js'
 import { renderDiagram } from './render.js'
@@ -453,6 +455,22 @@ app.post('/internal/zcode/img-download', async (req, res) => {
 })
 
 // extract_pdf_images：提取 PDF 内嵌图片
+// delegate：把专项任务委派给按角色聚焦的 ZCode 子进程（与主任务同一 signal，停止时一并终止）
+app.post('/internal/zcode/delegate', async (req, res) => {
+  if (!isRunning()) return res.status(409).json({ error: '当前没有进行中的任务' })
+  const role = String(req.body?.role ?? '')
+  const task = String(req.body?.task ?? '').trim()
+  if (!task) return res.status(400).json({ error: 'task 不能为空' })
+  console.log('[zcode-mcp] delegate:', role, '|', task.slice(0, 80))
+  try {
+    const result = await runZcodeSubAgent({ emit, role, task, context: String(req.body?.context ?? ''), signal: activeRunSignal() })
+    res.json({ result })
+  } catch (e) {
+    console.error('[zcode-mcp] delegate 失败:', e?.message || e)
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
 app.post('/internal/zcode/pdf-images', async (req, res) => {
   try {
     console.log('[zcode-mcp] extract_pdf_images:', String(req.body?.path || '').slice(0, 80))
