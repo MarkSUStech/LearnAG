@@ -421,6 +421,7 @@ app.post('/internal/zcode/search', async (req, res) => {
   try {
     const q = String(req.body?.query ?? '').trim()
     if (!q) return res.status(400).json({ error: 'query 不能为空' })
+    console.log('[zcode-mcp] search_knowledge:', q.slice(0, 80))
     res.json(await rag.search(q, Math.min(12, Number(req.body?.max_results) || 6)))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
