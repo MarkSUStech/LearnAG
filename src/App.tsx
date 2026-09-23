@@ -32,6 +32,9 @@ function flattenFiles(nodes: TreeNode[], out: string[] = []): string[] {
 
 const SAVE_DEBOUNCE = 600
 
+// 标签栏最多同时显示的标签数，超出的自动收进右端「折叠」区
+const MAX_VISIBLE_TABS = 10
+
 export default function App() {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [vaultPath, setVaultPath] = useState('')
@@ -73,6 +76,10 @@ export default function App() {
   })
   // 分屏：副面板单标签（标签拖到内容区右缘停靠；拖回标签栏 / 左缘取消）
   const [splitTab, setSplitTab] = useState<Tab | null>(null)
+  const [foldOpen, setFoldOpen] = useState(false)
+  const foldedStreaming = tabs
+    .slice(MAX_VISIBLE_TABS)
+    .some((tb) => tb.kind === 'note' && streaming[tb.path])
   const [splitRatio, setSplitRatio] = useState(() => {
     const r = Number(localStorage.getItem('la-split-ratio'))
     return r >= 0.25 && r <= 0.75 ? r : 0.55
@@ -129,6 +136,13 @@ export default function App() {
   const lastSentRef = useRef<Record<string, string>>({})
   const activeIdxRef = useRef(activeIdx)
   activeIdxRef.current = activeIdx
+  function activateTabReal(next: Tab[], target: number): Tab[] {
+    // 激活折叠区里的标签：把它移到标签栏最前并激活（保证活动标签始终可见）
+    const [t] = next.splice(target, 1)
+    next.unshift(t)
+    setActiveIdx(0)
+    return next
+  }
   const appViewRef = useRef(appView)
   appViewRef.current = appView
   const dragTabRef = useRef<{ idx: number; from: 'primary' | 'split' } | null>(null)
@@ -278,12 +292,15 @@ export default function App() {
     setTabs((ts) => {
       const i = ts.findIndex((t) => t.kind === 'note' && t.path === path)
       if (i >= 0) {
+        if (i >= MAX_VISIBLE_TABS) return activateTabReal(ts, i)
         setActiveIdx(i)
         return ts
       }
       const next = [...ts]
       next.splice(activeIdx + 1, 0, { kind: 'note', path })
-      setActiveIdx(next.findIndex((t) => t.kind === 'note' && t.path === path))
+      const ai = next.findIndex((t) => t.kind === 'note' && t.path === path)
+      if (ai >= MAX_VISIBLE_TABS) return activateTabReal(next, ai)
+      setActiveIdx(ai)
       return next
     })
     if (contentsRef.current[path] === undefined) {
@@ -704,6 +721,7 @@ export default function App() {
             const next = [...ts]
             const at = Math.min(activeIdxRef.current + 1, next.length)
             next.splice(at, 0, { kind: 'note', path })
+            if (at >= MAX_VISIBLE_TABS) return activateTabReal(next, at)
             setActiveIdx(at)
             return next
           })
@@ -913,7 +931,7 @@ export default function App() {
           >
             <span className="material-symbols-rounded">{sidebarCollapsed ? 'menu' : 'left_panel_close'}</span>
           </button>
-          {tabs.map((tab, i) => {
+          {tabs.slice(0, MAX_VISIBLE_TABS).map((tab, i) => {
             const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
             const tabTitle =
               tab.kind === 'graph'
@@ -1001,6 +1019,63 @@ export default function App() {
             </div>
           )}
           <div className="tabbar-end" />
+          {tabs.length > MAX_VISIBLE_TABS && (
+            <div className="tab-fold">
+              <button
+                className={`tab-fold-btn${foldOpen ? ' open' : ''}`}
+                title={`折叠的标签（${tabs.length - MAX_VISIBLE_TABS}）——点击展开列表`}
+                onClick={() => setFoldOpen((o) => !o)}
+              >
+                <span className="material-symbols-rounded">keyboard_double_arrow_left</span>
+                {tabs.length - MAX_VISIBLE_TABS}
+                {foldedStreaming && <span className="dot" />}
+              </button>
+              {foldOpen && (
+                <div className="tab-fold-menu">
+                  {tabs.slice(MAX_VISIBLE_TABS).map((tab, k) => {
+                    const realIdx = MAX_VISIBLE_TABS + k
+                    const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
+                    const tabTitle =
+                      tab.kind === 'graph'
+                        ? '知识图谱'
+                        : tab.kind === 'refs'
+                          ? '资料'
+                          : tab.path.split('/').pop()?.replace(/\.(md|pdf)$/i, '') ?? ''
+                    return (
+                      <div key={tabKey} className="tab-fold-item">
+                        <button
+                          className="tf-open"
+                          onClick={() => {
+                            flushSaves()
+                            setTabs((ts) => activateTabReal(ts, realIdx))
+                            setFoldOpen(false)
+                          }}
+                        >
+                          <span className="material-symbols-rounded">
+                            {tab.kind === 'graph' ? 'hub' : tab.kind === 'refs' ? 'folder_open' : tab.kind === 'pdf' ? 'picture_as_pdf' : 'description'}
+                          </span>
+                          <span className="tab-title">{tabTitle}</span>
+                          {streaming[tab.kind === 'note' ? tab.path : ''] && <span className="dot" />}
+                        </button>
+                        <button
+                          className="tf-close"
+                          title="直接关闭"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            closeTab(realIdx)
+                          }}
+                        >
+                          <span className="material-symbols-rounded" style={{ fontSize: 14 }}>
+                            close
+                          </span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div

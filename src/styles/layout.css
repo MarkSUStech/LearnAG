@@ -341,3 +341,95 @@
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
+
+/* ── 标签折叠区：超出窗口的标签收进右端折叠按钮 ────────────────────── */
+.tab-fold {
+  position: relative;
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
+}
+.tab-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-2, rgba(128, 128, 128, 0.1));
+  transition: all 0.12s;
+}
+.tab-fold-btn .material-symbols-rounded {
+  font-size: 16px;
+}
+.tab-fold-btn:hover,
+.tab-fold-btn.open {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+.tab-fold-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  padding: 5px;
+  z-index: 70;
+}
+.tab-fold-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 7px;
+}
+.tab-fold-item:hover {
+  background: var(--accent-weak);
+}
+.tab-fold-item .tf-open {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 12.5px;
+  color: var(--text-1);
+  text-align: left;
+}
+.tab-fold-item .tf-open .material-symbols-rounded {
+  font-size: 15px;
+  flex: none;
+  color: var(--text-3);
+}
+.tab-fold-item .tf-open .tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-fold-item .tf-open .dot {
+  flex: none;
+}
+.tab-fold-item .tf-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-3);
+}
+.tab-fold-item .tf-close:hover {
+  color: var(--text-1);
+  background: rgba(128, 128, 128, 0.15);
+}
