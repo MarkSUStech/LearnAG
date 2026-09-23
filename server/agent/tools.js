@@ -11,6 +11,7 @@ import { buildStudyContext } from '../pdfcontext.js'
 import { keyFor, getOutlineTree, flattenOutline, chapterRange } from '../pdfdoc.js'
 
 import { searchImages, downloadImageToVault } from './imgsearch.js'
+import { extractPdfImages } from './pdfimages.js'
 
 // ── 工具定义（OpenAI function calling 格式） ────────────────────────────────
 
@@ -272,6 +273,24 @@ export const toolDefs = [
   {
     type: 'function',
     function: {
+      name: 'extract_pdf_images',
+      description:
+        '提取一篇 PDF 里的全部内嵌图片（教材插图/图表/照片），解码为 PNG 存入 assets/pdf/<PDF名>/，返回清单（文件/页码/尺寸）。' +
+        '自动过滤小图标；重复提取直接返回已有结果。配合 download/search 之外的第二种配图来源：把教材原图直接搬进笔记。',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'PDF 在 vault 内的相对路径（如 资料/xx/lecturenote1.pdf）' },
+          min_size: { type: 'number', description: '图片最小边长（像素），默认 200，过滤小图标' },
+          force: { type: 'boolean', description: '已提取过时是否强制重新提取' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'delegate',
       description:
         '把一个具体任务委派给专职子 Agent 完成并拿回结果。可选 role：' +
@@ -442,6 +461,15 @@ export async function executeTool(name, args, hooks = {}) {
       case 'download_image': {
         const r = await downloadImageToVault({ url: String(args.url ?? ''), path: args.path ? String(args.path) : undefined })
         return JSON.stringify({ ok: true, path: r.path, bytes: r.bytes, hint: '在笔记中用 ![](' + r.path + ') 引用' })
+      }
+      case 'extract_pdf_images': {
+        const r = await extractPdfImages({ path: String(args.path ?? ''), min_size: args.min_size, force: Boolean(args.force) })
+        return JSON.stringify({
+          ...r,
+          hint:
+            '在笔记中用 ![](' + (r.images[0]?.file ?? '') + ') 引用；引用时建议注明来源 PDF 与页码。' +
+            (r.count === 0 ? '本 PDF 没有提取到符合条件的图片（可能是纯文本/矢量绘制），可尝试降低 min_size。' : ''),
+        })
       }
       case 'delegate': {
         if (typeof hooks.delegate !== 'function') {
