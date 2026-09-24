@@ -249,9 +249,9 @@ function messagesToPrompt(messages) {
   return body + '\n\n【输出要求】直接以文本回答（markdown），不要调用任何工具，不要读写任何文件。'
 }
 
-export async function* streamChat({ messages, signal, tools = toolDefs }) {
+export async function* streamChat({ messages, signal, tools = toolDefs, engine: engineOpt }) {
   // ZCode 引擎：无工具直答流式（主智能体在 zcode 模式下不走本函数的工具循环）
-  if (usingZcode()) {
+  if (engineOpt ? engineOpt === 'zcode' && zcodeAvailable() : usingZcode()) {
     for await (const text of zcodeStreamText(messagesToPrompt(messages), { signal })) {
       yield { delta: { content: text }, finishReason: undefined }
     }
@@ -338,7 +338,7 @@ export async function* streamChat({ messages, signal, tools = toolDefs }) {
 /** 非流式单次调用（历史压缩、mermaid 修复等辅助任务） */
 export async function chatOnce(messages, opts = {}) {
   // ZCode 引擎：单轮无头问答（无工具、纯文本回复）
-  if (usingZcode()) {
+  if (engineOpt ? engineOpt === 'zcode' && zcodeAvailable() : usingZcode()) {
     return zcodeChatOnce(messagesToPrompt(messages))
   }
   const { base, apiKey, model } = apiConfig()

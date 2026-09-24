@@ -14,7 +14,8 @@ const DEFAULTS = {
   apiKey: '',
   model: 'deepseek-chat',
   ragModel: 'jina-v2-base-zh',
-  engine: 'api', // 'api' = OpenAI 兼容服务；'zcode' = 本机 ZCode CLI
+  engine: 'api', // 'api' = OpenAI 兼容服务；'zcode' = 本机 ZCode CLI（主智能体）
+  tutorEngine: 'follow', // 答疑助手引擎：'follow' 跟随主引擎 / 'api' / 'zcode'
   zcodePath: '', // 空 = 自动探测桌面版内置 CLI
   zcodeMaxTurns: 30,
 }
@@ -59,6 +60,7 @@ export function saveSettings(patch) {
   if (patch.apiKey === '') next.apiKey = ''
   // 引擎：只接受合法取值
   if (patch.engine === 'api' || patch.engine === 'zcode') next.engine = patch.engine
+  if (['follow', 'api', 'zcode'].includes(patch.tutorEngine)) next.tutorEngine = patch.tutorEngine
   // zcodePath 允许显式清空（回到自动探测）
   if (typeof patch.zcodePath === 'string') next.zcodePath = patch.zcodePath.trim()
   if (patch.zcodeMaxTurns != null) {
@@ -82,6 +84,7 @@ export function publicSettings() {
     hasApiKey: Boolean(s.apiKey),
     apiKeyMasked: s.apiKey ? s.apiKey.slice(0, 3) + '***' + s.apiKey.slice(-4) : '',
     engine: s.engine || 'api',
+    tutorEngine: s.tutorEngine || 'follow',
     zcodePath: s.zcodePath || '',
     zcodeAutoPath: autoPath,
     zcodeMaxTurns: s.zcodeMaxTurns || 30,

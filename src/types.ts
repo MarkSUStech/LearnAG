@@ -68,6 +68,7 @@ export interface Settings {
   hasApiKey: boolean
   apiKeyMasked: string
   engine: 'api' | 'zcode'
+  tutorEngine: 'follow' | 'api' | 'zcode'
   zcodePath: string
   zcodeAutoPath: string
   zcodeMaxTurns: number

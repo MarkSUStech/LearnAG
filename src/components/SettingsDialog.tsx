@@ -20,6 +20,7 @@ const RAG_MODELS = [
 export default function SettingsDialog({ settings, appearance, onAppearanceChange, onClose, onSaved }: Props) {
   const [vaultPath, setVaultPath] = useState(settings.vaultPath)
   const [engine, setEngine] = useState<'api' | 'zcode'>(settings.engine === 'zcode' ? 'zcode' : 'api')
+  const [tutorEngine, setTutorEngine] = useState<'follow' | 'api' | 'zcode'>((settings.tutorEngine as any) || 'follow')
   const [zcodePath, setZcodePath] = useState(settings.zcodePath || '')
   const [zcodeInfo, setZcodeInfo] = useState<{ found: boolean; version: string; path: string } | null>(null)
   const [baseURL, setBaseURL] = useState(settings.apiBaseURL)
@@ -76,7 +77,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
   async function save() {
     setSaving(true)
     try {
-      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, ragModel, engine, zcodePath: zcodePath.trim() }
+      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, ragModel, engine, tutorEngine, zcodePath: zcodePath.trim() }
       if (apiKey.trim()) patch.apiKey = apiKey.trim()
       const s = await api.saveSettings(patch)
       onSaved(s)
@@ -93,7 +94,7 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
     setTestResult(null)
     try {
       // 先保存再测试，保证测的是当前填写的配置
-      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, engine, zcodePath: zcodePath.trim() }
+      const patch: Record<string, string | number> = { vaultPath, apiBaseURL: baseURL, model, engine, tutorEngine, zcodePath: zcodePath.trim() }
       if (apiKey.trim()) patch.apiKey = apiKey.trim()
       await api.saveSettings(patch)
       const r = await api.testConnection()
@@ -203,6 +204,15 @@ export default function SettingsDialog({ settings, appearance, onAppearanceChang
               </div>
             </>
           )}
+          <div className="field">
+            <label>答疑助手引擎（笔记侧边小窗）</label>
+            <select value={tutorEngine} onChange={(e) => setTutorEngine(e.target.value as 'follow' | 'api' | 'zcode')}>
+              <option value="follow">跟随主引擎</option>
+              <option value="api">API 服务（快，推荐）</option>
+              <option value="zcode">ZCode（本机智能体）</option>
+            </select>
+            <div className="hint">答疑需要快速响应：主引擎选 ZCode 时建议答疑保持 API</div>
+          </div>
           <div className="field">
             <label>API 服务{engine === 'zcode' ? '（后备引擎）Base URL' : '（OpenAI 兼容）Base URL'}</label>
             <input

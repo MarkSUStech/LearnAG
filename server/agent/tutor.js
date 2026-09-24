@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { streamChat } from './runner.js'
+import { loadSettings } from '../settings.js'
 import { buildTutorPrompt, TUTOR_ROLES } from './tutorPrompts.js'
 import { executeTool } from './tools.js'
 import * as vault from '../vault.js'
@@ -136,7 +137,10 @@ export async function runTutor({ emit, notePath, role, message, page }) {
       const assistant = { role: 'assistant', content: '' }
       const callAcc = new Map()
 
-      for await (const { delta, finishReason } of streamChat({ messages, signal: controller.signal })) {
+      // 答疑引擎：follow 跟随主引擎；独立选 api/zcode（答疑要快，建议 api）
+    const te = loadSettings().tutorEngine || 'follow'
+    const engine = te === 'follow' ? undefined : te
+    for await (const { delta, finishReason } of streamChat({ messages, signal: controller.signal, engine })) {
         if (finishReason) break
         if (delta.content) {
           assistant.content += delta.content
