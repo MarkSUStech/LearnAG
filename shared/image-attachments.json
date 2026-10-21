@@ -1,0 +1,11 @@
+{
+  "maxImages": 4,
+  "maxBytes": 10485760,
+  "mimeByExtension": {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif"
+  }
+}

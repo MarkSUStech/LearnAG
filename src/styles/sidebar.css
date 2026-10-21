@@ -163,3 +163,48 @@
   visibility: visible;
 }
 
+
+/* ── 文件树右键菜单：任意文件夹新建笔记/教学对话/代码文件/文件夹，重命名/删除 ── */
+.tree-ctx-menu {
+  position: fixed;
+  z-index: 95;
+  min-width: 168px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+  animation: msgIn 0.14s ease-out;
+}
+.tree-ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.tree-ctx-menu button:hover {
+  background: var(--panel-2);
+}
+.tree-ctx-menu button .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--text-2);
+  flex: none;
+}
+.tree-ctx-menu button.danger,
+.tree-ctx-menu button.danger .material-symbols-rounded {
+  color: var(--danger);
+}
+.tree-ctx-menu .tcm-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}

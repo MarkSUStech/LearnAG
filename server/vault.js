@@ -58,6 +58,34 @@ export function isTextFile(name) {
   return TEXT_EXTS.has(name.slice(i).toLowerCase())
 }
 
+// 学习模式文件树默认展示的文件类型：md/pdf 之外，常见代码与文本文件也可直接新建与预览
+const DEFAULT_TREE_EXTS = [
+  '.md', '.pdf', '.txt',
+  '.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx',
+  '.java', '.c', '.h', '.cpp', '.hpp', '.cc', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt',
+  '.sh', '.bat', '.ps1', '.sql', '.r',
+  '.html', '.htm', '.css', '.scss', '.json', '.yml', '.yaml', '.toml', '.ini', '.csv',
+]
+
+/** 轻量探测 .md 是否为教学对话文件（frontmatter 含 type: teaching-chat）：只读文件头 256 字节 */
+function isTeachingChat(absPath) {
+  let fd
+  try {
+    fd = fs.openSync(absPath, 'r')
+    const buf = Buffer.alloc(256)
+    const n = fs.readSync(fd, buf, 0, 256, 0)
+    return buf.slice(0, n).toString('utf8').includes('type: teaching-chat')
+  } catch {
+    return false
+  } finally {
+    try {
+      if (fd != null) fs.closeSync(fd)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function buildTree(absDir, relDir = '', all = false) {
   const out = []
   let entries = []
@@ -80,8 +108,16 @@ function buildTree(absDir, relDir = '', all = false) {
         type: 'folder',
         children: buildTree(path.join(absDir, ent.name), rel, all),
       })
-    } else if (ent.isFile() && (includeAll || ['.md', '.pdf'].includes(ent.name.toLowerCase().slice(ent.name.lastIndexOf('.')).toLowerCase()))) {
-      out.push({ name: ent.name, path: rel, type: 'file' })
+    } else if (
+      ent.isFile() &&
+      (includeAll ||
+        DEFAULT_TREE_EXTS.includes(ent.name.toLowerCase().slice(ent.name.lastIndexOf('.')).toLowerCase()))
+    ) {
+      const absFile = path.join(absDir, ent.name)
+      const node = { name: ent.name, path: rel, type: 'file' }
+      // 教学对话文件（frontmatter 含 type: teaching-chat）打标记，文件树用 school 图标区分普通笔记
+      if (ent.name.toLowerCase().endsWith('.md') && isTeachingChat(absFile)) node.chat = true
+      out.push(node)
     }
   }
   out.sort((a, b) => {

@@ -1,5 +1,6 @@
 // PDF 学习器顶栏：文档名 / 标注工具条 / 颜色 / 缩放 / 页码 / 大纲与卡片面板开关
 import { useStore } from './store'
+import { useEffect, useState } from 'react'
 import type { ToolMode } from './types'
 import { MASK_COLORS, TEXT_ANN_COLORS } from './types'
 
@@ -22,6 +23,9 @@ export default function PsToolbar({
   onToggleTutor?: () => void
 }) {
   const s = useStore()
+  const [pageInput,setPageInput] = useState(String(s.currentPage))
+  const [editingPage,setEditingPage] = useState(false)
+  useEffect(() => { if (!editingPage) setPageInput(String(s.currentPage)) }, [s.currentPage,editingPage])
 
   return (
     <div className="ps-topbar">
@@ -89,12 +93,20 @@ export default function PsToolbar({
         </div>
         <div className="ps-page-ind">
           <input
-            value={s.currentPage}
-            onChange={() => undefined}
+            aria-label="PDF 页码"
+            inputMode="numeric"
+            value={pageInput}
+            onFocus={() => setEditingPage(true)}
+            onChange={event => setPageInput(event.target.value)}
+            onBlur={() => { setEditingPage(false); setPageInput(String(s.currentPage)) }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                const p = parseInt((e.target as HTMLInputElement).value)
-                if (p >= 1 && p <= s.pageCount) s.jumpTo(p)
+                e.preventDefault()
+                const p = Number(pageInput)
+                if (Number.isInteger(p) && p >= 1 && p <= s.pageCount) { s.jumpTo(p); (e.target as HTMLInputElement).blur() }
+                else s.toast(`页码应在 1–${s.pageCount || 1} 之间`,'error')
+              } else if (e.key === 'Escape') {
+                e.stopPropagation(); (e.target as HTMLInputElement).blur()
               }
             }}
           />

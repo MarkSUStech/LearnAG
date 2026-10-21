@@ -9,7 +9,7 @@ const MAX_ROUNDS = 8
  * @param opts { role, task, context, emit, signal, streamChat, executeTool, hooks }
  * @returns { result: string } 子 Agent 的最终文字产出
  */
-export async function runSubAgent({ role, task, context = '', emit, signal, streamChat, executeTool, hooks = {} }) {
+export async function runSubAgent({ role, task, context = '', images = [], emit, signal, streamChat, executeTool, hooks = {} }) {
   const def = SUB_AGENTS[role]
   if (!def) throw new Error('未知子 Agent：' + role)
   const tools = toolsForRole(role)
@@ -19,6 +19,7 @@ export async function runSubAgent({ role, task, context = '', emit, signal, stre
     {
       role: 'user',
       content: `【任务】${task}${context ? `\n\n【上下文】${context}` : ''}`,
+      ...(images.length ? { images } : {}),
     },
   ]
 
@@ -28,6 +29,8 @@ export async function runSubAgent({ role, task, context = '', emit, signal, stre
 
     for await (const { delta, finishReason } of streamChat({ messages, signal, tools })) {
       if (finishReason) break
+      const reasoning = delta.reasoning_content ?? delta.reasoning
+      if (reasoning) assistant.reasoning_content = (assistant.reasoning_content || '') + reasoning
       if (delta.content) assistant.content += delta.content
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
@@ -62,7 +65,9 @@ export async function runSubAgent({ role, task, context = '', emit, signal, stre
         }
         let result
         try {
-          result = await executeTool(tc.name, args, { onWrite: hooks.onWrite })
+          result = tools.some((t) => t.function.name === tc.name)
+            ? await executeTool(tc.name, args, { onWrite: hooks.onWrite })
+            : JSON.stringify({ error: `当前角色不可调用工具：${tc.name}` })
         } catch (e) {
           result = JSON.stringify({ error: String(e?.message || e) })
         }

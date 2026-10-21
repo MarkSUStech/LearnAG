@@ -1,0 +1,596 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-19T14:10:33.198Z",
+  "title": "Design System: LearnAgent 研习记录台预览",
+  "extensions": {
+    "colorMeta": {
+      "desk": {
+        "role": "neutral",
+        "displayName": "Desk",
+        "tonalRamp": [
+          "oklch(15.00% 0.00540 95.10)",
+          "oklch(26.43% 0.00540 95.10)",
+          "oklch(37.86% 0.00540 95.10)",
+          "oklch(49.29% 0.00540 95.10)",
+          "oklch(60.71% 0.00540 95.10)",
+          "oklch(72.14% 0.00540 95.10)",
+          "oklch(83.57% 0.00540 95.10)",
+          "oklch(95.00% 0.00540 95.10)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "tonalRamp": [
+          "oklch(15.00% 0.00537 95.10)",
+          "oklch(26.43% 0.00537 95.10)",
+          "oklch(37.86% 0.00537 95.10)",
+          "oklch(49.29% 0.00537 95.10)",
+          "oklch(60.71% 0.00537 95.10)",
+          "oklch(72.14% 0.00537 95.10)",
+          "oklch(83.57% 0.00537 95.10)",
+          "oklch(95.00% 0.00537 95.10)"
+        ]
+      },
+      "mineral": {
+        "role": "neutral",
+        "displayName": "Mineral",
+        "tonalRamp": [
+          "oklch(15.00% 0.00806 98.88)",
+          "oklch(26.43% 0.00806 98.88)",
+          "oklch(37.86% 0.00806 98.88)",
+          "oklch(49.29% 0.00806 98.88)",
+          "oklch(60.71% 0.00806 98.88)",
+          "oklch(72.14% 0.00806 98.88)",
+          "oklch(83.57% 0.00806 98.88)",
+          "oklch(95.00% 0.00806 98.88)"
+        ]
+      },
+      "seam": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "tonalRamp": [
+          "oklch(15.00% 0.01080 112.39)",
+          "oklch(26.43% 0.01080 112.39)",
+          "oklch(37.86% 0.01080 112.39)",
+          "oklch(49.29% 0.01080 112.39)",
+          "oklch(60.71% 0.01080 112.39)",
+          "oklch(72.14% 0.01080 112.39)",
+          "oklch(83.57% 0.01080 112.39)",
+          "oklch(95.00% 0.01080 112.39)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.01326 154.42)",
+          "oklch(26.43% 0.01326 154.42)",
+          "oklch(37.86% 0.01326 154.42)",
+          "oklch(49.29% 0.01326 154.42)",
+          "oklch(60.71% 0.01326 154.42)",
+          "oklch(72.14% 0.01326 154.42)",
+          "oklch(83.57% 0.01326 154.42)",
+          "oklch(95.00% 0.01326 154.42)"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "tonalRamp": [
+          "oklch(15.00% 0.01835 139.44)",
+          "oklch(26.43% 0.01835 139.44)",
+          "oklch(37.86% 0.01835 139.44)",
+          "oklch(49.29% 0.01835 139.44)",
+          "oklch(60.71% 0.01835 139.44)",
+          "oklch(72.14% 0.01835 139.44)",
+          "oklch(83.57% 0.01835 139.44)",
+          "oklch(95.00% 0.01835 139.44)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Ink Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.01721 136.13)",
+          "oklch(26.43% 0.01721 136.13)",
+          "oklch(37.86% 0.01721 136.13)",
+          "oklch(49.29% 0.01721 136.13)",
+          "oklch(60.71% 0.01721 136.13)",
+          "oklch(72.14% 0.01721 136.13)",
+          "oklch(83.57% 0.01721 136.13)",
+          "oklch(95.00% 0.01721 136.13)"
+        ]
+      },
+      "terracotta": {
+        "role": "primary",
+        "displayName": "Terracotta",
+        "tonalRamp": [
+          "oklch(15.00% 0.11094 43.84)",
+          "oklch(26.43% 0.11094 43.84)",
+          "oklch(37.86% 0.11094 43.84)",
+          "oklch(49.29% 0.11094 43.84)",
+          "oklch(60.71% 0.11094 43.84)",
+          "oklch(72.14% 0.11094 43.84)",
+          "oklch(83.57% 0.11094 43.84)",
+          "oklch(95.00% 0.11094 43.84)"
+        ]
+      },
+      "terracotta-wash": {
+        "role": "primary",
+        "displayName": "Terracotta Wash",
+        "tonalRamp": [
+          "oklch(15.00% 0.01727 67.61)",
+          "oklch(26.43% 0.01727 67.61)",
+          "oklch(37.86% 0.01727 67.61)",
+          "oklch(49.29% 0.01727 67.61)",
+          "oklch(60.71% 0.01727 67.61)",
+          "oklch(72.14% 0.01727 67.61)",
+          "oklch(83.57% 0.01727 67.61)",
+          "oklch(95.00% 0.01727 67.61)"
+        ]
+      },
+      "mastered": {
+        "role": "secondary",
+        "displayName": "Mastered",
+        "tonalRamp": [
+          "oklch(15.00% 0.06206 162.41)",
+          "oklch(26.43% 0.06206 162.41)",
+          "oklch(37.86% 0.06206 162.41)",
+          "oklch(49.29% 0.06206 162.41)",
+          "oklch(60.71% 0.06206 162.41)",
+          "oklch(72.14% 0.06206 162.41)",
+          "oklch(83.57% 0.06206 162.41)",
+          "oklch(95.00% 0.06206 162.41)"
+        ]
+      },
+      "learning": {
+        "role": "secondary",
+        "displayName": "Learning",
+        "tonalRamp": [
+          "oklch(15.00% 0.10223 62.14)",
+          "oklch(26.43% 0.10223 62.14)",
+          "oklch(37.86% 0.10223 62.14)",
+          "oklch(49.29% 0.10223 62.14)",
+          "oklch(60.71% 0.10223 62.14)",
+          "oklch(72.14% 0.10223 62.14)",
+          "oklch(83.57% 0.10223 62.14)",
+          "oklch(95.00% 0.10223 62.14)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15.00% 0.14425 26.48)",
+          "oklch(26.43% 0.14425 26.48)",
+          "oklch(37.86% 0.14425 26.48)",
+          "oklch(49.29% 0.14425 26.48)",
+          "oklch(60.71% 0.14425 26.48)",
+          "oklch(72.14% 0.14425 26.48)",
+          "oklch(83.57% 0.14425 26.48)",
+          "oklch(95.00% 0.14425 26.48)"
+        ]
+      },
+      "navigation": {
+        "role": "neutral",
+        "displayName": "Navigation",
+        "tonalRamp": [
+          "oklch(15.00% 0.00803 114.22)",
+          "oklch(26.43% 0.00803 114.22)",
+          "oklch(37.86% 0.00803 114.22)",
+          "oklch(49.29% 0.00803 114.22)",
+          "oklch(60.71% 0.00803 114.22)",
+          "oklch(72.14% 0.00803 114.22)",
+          "oklch(83.57% 0.00803 114.22)",
+          "oklch(95.00% 0.00803 114.22)"
+        ]
+      },
+      "dark-desk": {
+        "role": "neutral",
+        "displayName": "Dark Desk",
+        "tonalRamp": [
+          "oklch(15.00% 0.01040 163.98)",
+          "oklch(26.43% 0.01040 163.98)",
+          "oklch(37.86% 0.01040 163.98)",
+          "oklch(49.29% 0.01040 163.98)",
+          "oklch(60.71% 0.01040 163.98)",
+          "oklch(72.14% 0.01040 163.98)",
+          "oklch(83.57% 0.01040 163.98)",
+          "oklch(95.00% 0.01040 163.98)"
+        ]
+      },
+      "dark-paper": {
+        "role": "neutral",
+        "displayName": "Dark Paper",
+        "tonalRamp": [
+          "oklch(15.00% 0.01450 157.88)",
+          "oklch(26.43% 0.01450 157.88)",
+          "oklch(37.86% 0.01450 157.88)",
+          "oklch(49.29% 0.01450 157.88)",
+          "oklch(60.71% 0.01450 157.88)",
+          "oklch(72.14% 0.01450 157.88)",
+          "oklch(83.57% 0.01450 157.88)",
+          "oklch(95.00% 0.01450 157.88)"
+        ]
+      },
+      "dark-mineral": {
+        "role": "neutral",
+        "displayName": "Dark Mineral",
+        "tonalRamp": [
+          "oklch(15.00% 0.01736 151.92)",
+          "oklch(26.43% 0.01736 151.92)",
+          "oklch(37.86% 0.01736 151.92)",
+          "oklch(49.29% 0.01736 151.92)",
+          "oklch(60.71% 0.01736 151.92)",
+          "oklch(72.14% 0.01736 151.92)",
+          "oklch(83.57% 0.01736 151.92)",
+          "oklch(95.00% 0.01736 151.92)"
+        ]
+      },
+      "dark-seam": {
+        "role": "neutral",
+        "displayName": "Dark Seam",
+        "tonalRamp": [
+          "oklch(15.00% 0.01964 153.81)",
+          "oklch(26.43% 0.01964 153.81)",
+          "oklch(37.86% 0.01964 153.81)",
+          "oklch(49.29% 0.01964 153.81)",
+          "oklch(60.71% 0.01964 153.81)",
+          "oklch(72.14% 0.01964 153.81)",
+          "oklch(83.57% 0.01964 153.81)",
+          "oklch(95.00% 0.01964 153.81)"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.01315 130.79)",
+          "oklch(26.43% 0.01315 130.79)",
+          "oklch(37.86% 0.01315 130.79)",
+          "oklch(49.29% 0.01315 130.79)",
+          "oklch(60.71% 0.01315 130.79)",
+          "oklch(72.14% 0.01315 130.79)",
+          "oklch(83.57% 0.01315 130.79)",
+          "oklch(95.00% 0.01315 130.79)"
+        ]
+      },
+      "dark-ink-secondary": {
+        "role": "neutral",
+        "displayName": "Dark Ink Secondary",
+        "tonalRamp": [
+          "oklch(15.00% 0.01761 137.04)",
+          "oklch(26.43% 0.01761 137.04)",
+          "oklch(37.86% 0.01761 137.04)",
+          "oklch(49.29% 0.01761 137.04)",
+          "oklch(60.71% 0.01761 137.04)",
+          "oklch(72.14% 0.01761 137.04)",
+          "oklch(83.57% 0.01761 137.04)",
+          "oklch(95.00% 0.01761 137.04)"
+        ]
+      },
+      "dark-ink-muted": {
+        "role": "neutral",
+        "displayName": "Dark Ink Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.02455 137.27)",
+          "oklch(26.43% 0.02455 137.27)",
+          "oklch(37.86% 0.02455 137.27)",
+          "oklch(49.29% 0.02455 137.27)",
+          "oklch(60.71% 0.02455 137.27)",
+          "oklch(72.14% 0.02455 137.27)",
+          "oklch(83.57% 0.02455 137.27)",
+          "oklch(95.00% 0.02455 137.27)"
+        ]
+      },
+      "dark-accent": {
+        "role": "primary",
+        "displayName": "Dark Accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.08583 58.05)",
+          "oklch(26.43% 0.08583 58.05)",
+          "oklch(37.86% 0.08583 58.05)",
+          "oklch(49.29% 0.08583 58.05)",
+          "oklch(60.71% 0.08583 58.05)",
+          "oklch(72.14% 0.08583 58.05)",
+          "oklch(83.57% 0.08583 58.05)",
+          "oklch(95.00% 0.08583 58.05)"
+        ]
+      },
+      "dark-accent-wash": {
+        "role": "primary",
+        "displayName": "Dark Accent Wash",
+        "tonalRamp": [
+          "oklch(15.00% 0.02314 64.18)",
+          "oklch(26.43% 0.02314 64.18)",
+          "oklch(37.86% 0.02314 64.18)",
+          "oklch(49.29% 0.02314 64.18)",
+          "oklch(60.71% 0.02314 64.18)",
+          "oklch(72.14% 0.02314 64.18)",
+          "oklch(83.57% 0.02314 64.18)",
+          "oklch(95.00% 0.02314 64.18)"
+        ]
+      },
+      "dark-mastered": {
+        "role": "secondary",
+        "displayName": "Dark Mastered",
+        "tonalRamp": [
+          "oklch(15.00% 0.05193 150.37)",
+          "oklch(26.43% 0.05193 150.37)",
+          "oklch(37.86% 0.05193 150.37)",
+          "oklch(49.29% 0.05193 150.37)",
+          "oklch(60.71% 0.05193 150.37)",
+          "oklch(72.14% 0.05193 150.37)",
+          "oklch(83.57% 0.05193 150.37)",
+          "oklch(95.00% 0.05193 150.37)"
+        ]
+      },
+      "dark-learning": {
+        "role": "secondary",
+        "displayName": "Dark Learning",
+        "tonalRamp": [
+          "oklch(15.00% 0.09436 76.80)",
+          "oklch(26.43% 0.09436 76.80)",
+          "oklch(37.86% 0.09436 76.80)",
+          "oklch(49.29% 0.09436 76.80)",
+          "oklch(60.71% 0.09436 76.80)",
+          "oklch(72.14% 0.09436 76.80)",
+          "oklch(83.57% 0.09436 76.80)",
+          "oklch(95.00% 0.09436 76.80)"
+        ]
+      },
+      "dark-navigation": {
+        "role": "neutral",
+        "displayName": "Dark Navigation",
+        "tonalRamp": [
+          "oklch(15.00% 0.01396 154.14)",
+          "oklch(26.43% 0.01396 154.14)",
+          "oklch(37.86% 0.01396 154.14)",
+          "oklch(49.29% 0.01396 154.14)",
+          "oklch(60.71% 0.01396 154.14)",
+          "oklch(72.14% 0.01396 154.14)",
+          "oklch(83.57% 0.01396 154.14)",
+          "oklch(95.00% 0.01396 154.14)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "笔记标题",
+        "purpose": "文章首行；最终 CSS 字重 650。本地文件只含 600，任意中文标题可能回退。"
+      },
+      "display-mobile": {
+        "displayName": "手机笔记标题",
+        "purpose": "700px 及以下的文章标题。"
+      },
+      "ai-display": {
+        "displayName": "AI 引导标题",
+        "purpose": "协作区引导；最终 CSS 字重 550。"
+      },
+      "page-title": {
+        "displayName": "页面标题",
+        "purpose": "资料、知识图谱和学习路径的首标题。"
+      },
+      "heading": {
+        "displayName": "正文小节",
+        "purpose": "长文小节，使用系统正文字体。"
+      },
+      "body": {
+        "displayName": "笔记正文",
+        "purpose": "默认桌面 Markdown 正文；手机固定 15px。"
+      },
+      "interface": {
+        "displayName": "界面",
+        "purpose": "工作区继承的系统字体与基础行高。"
+      },
+      "label": {
+        "displayName": "标签",
+        "purpose": "话题及紧凑辅助文字。"
+      },
+      "source": {
+        "displayName": "Markdown 源码",
+        "purpose": "源码编辑区，手机使用 12px。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "dialog",
+        "value": "0 20px 75px #0003",
+        "purpose": "搜索和设置模态。"
+      },
+      {
+        "name": "toast",
+        "value": "0 8px 26px #0002",
+        "purpose": "临时结果通知。"
+      },
+      {
+        "name": "assistant-drawer",
+        "value": "-12px 0 45px #0002",
+        "purpose": "1020px 及以下的协作抽屉。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "background .16s ease,color .16s ease",
+        "purpose": "按钮背景与文字状态；减少动画偏好关闭过渡。"
+      },
+      {
+        "name": "array-state",
+        "value": "background .2s ease,border-color .2s ease",
+        "purpose": "数组步骤变化；减少动画偏好关闭过渡。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide-min",
+        "value": "1600px"
+      },
+      {
+        "name": "compact-max",
+        "value": "1200px"
+      },
+      {
+        "name": "assistant-drawer-max",
+        "value": "1020px"
+      },
+      {
+        "name": "mobile-max",
+        "value": "700px"
+      }
+    ],
+    "provenance": {
+      "scope": "Query-gated ?design=workspace preview; existing root application tokens are retained.",
+      "sources": [
+        "src/design-preview/workspace.css",
+        "src/design-preview/LearningWorkspace.tsx",
+        "src/styles/tokens.css",
+        "src/styles/noteui.css",
+        "src/main.tsx",
+        "PRODUCT.md",
+        ".impeccable/surfaces/src-design-preview-learningworkspace-tsx.md",
+        "doc/workspace-redesign.md",
+        "src/design-preview/fonts/README.md",
+        ".impeccable/review/finish-review.md"
+      ],
+      "review": "Final disposition ship, limited to the three scored correction-batch findings.",
+      "specimens": "Literal preview defaults are intentional: the preview colors are scoped to .studio, while root variables belong to the incumbent app. Snippets need no framework, icon font, or global stylesheet.",
+      "ramps": "Synthesized OKLCH swatches for panel exploration only; not shipping tokens or approved implementation color scales."
+    }
+  },
+  "components": [
+    {
+      "name": "主要操作",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "保存预览与新建草稿等主要动作。",
+      "html": "<button class=\"ds-primary\" type=\"button\">保存预览</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;background:#994e2c;color:#fffefa;padding:9px 13px;font:550 12px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-primary:hover{filter:brightness(.94)}.ds-primary:focus-visible{outline:2px solid #994e2c;outline-offset:3px}.ds-primary:disabled{opacity:.42;cursor:default}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}"
+    },
+    {
+      "name": "文本操作",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "演示下一步等轻量动作；依所属正文继承字号。",
+      "html": "<button class=\"ds-text\" type=\"button\">下一步 <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-text{display:flex;align-items:center;gap:5px;border:0;background:transparent;padding:3px;color:#994e2c;font:400 10px/1.9 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-text:not(:disabled):hover{background:#eeede7}.ds-text:focus-visible{outline:2px solid #994e2c;outline-offset:3px}.ds-text:disabled{opacity:.42;cursor:default}@media(prefers-reduced-motion:reduce){.ds-text{transition:none}}"
+    },
+    {
+      "name": "图标操作",
+      "kind": "button",
+      "refersTo": "button-icon",
+      "description": "关闭等次要操作，保留可读的辅助名称。",
+      "html": "<button class=\"ds-icon\" type=\"button\" aria-label=\"关闭面板\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M6 6l12 12M18 6L6 18\"/></svg></button>",
+      "css": ".ds-icon{display:inline-grid;place-items:center;width:29px;height:29px;flex:none;border:0;border-radius:5px;background:transparent;color:#61695f;padding:0;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-icon:not(:disabled):hover{background:#eeede7}.ds-icon:focus-visible{outline:2px solid #994e2c;outline-offset:3px}.ds-icon:disabled{opacity:.42;cursor:default}@media(prefers-reduced-motion:reduce){.ds-icon{transition:none}}"
+    },
+    {
+      "name": "主导航",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "相邻的工作区入口，用浅底和文字显示当前项。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作区\"><button type=\"button\" aria-current=\"page\">学习工作台</button><button type=\"button\">笔记与资料 <small>269</small></button><button type=\"button\">知识图谱</button></nav>",
+      "css": ".ds-nav{display:grid;gap:5px;background:#eeefe9;padding:16px;font:400 14px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-nav button{display:flex;align-items:center;gap:11px;padding:10px 12px;border:0;border-radius:7px;background:transparent;color:#61695f;text-align:left;font:inherit;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-nav button[aria-current=page]{color:#994e2c;background:#f1e7dd;font-weight:600}.ds-nav button:not(:disabled):hover{background:#eeede7}.ds-nav button:focus-visible{outline:2px solid #994e2c;outline-offset:3px}.ds-nav small{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums}@media(prefers-reduced-motion:reduce){.ds-nav button{transition:none}}"
+    },
+    {
+      "name": "话题标签",
+      "kind": "chip",
+      "refersTo": "topic-tag",
+      "description": "静态话题分类，不承担交互。",
+      "html": "<div class=\"ds-tags\"><span>贪心</span><span>逆序对</span><span>树状数组</span></div>",
+      "css": ".ds-tags{display:flex;gap:9px}.ds-tags span{background:#eeede7;color:#61695f;padding:2px 8px;border-radius:4px;font:400 10px/1.9 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}"
+    },
+    {
+      "name": "协作输入框",
+      "kind": "input",
+      "refersTo": "compose-field",
+      "description": "当前材料内的提问输入；容器边界表达焦点。",
+      "html": "<div class=\"ds-compose\"><textarea aria-label=\"向 AI 提问\" placeholder=\"哪里还没想明白？\"></textarea></div>",
+      "css": ".ds-compose{padding:11px;border:1px solid #dedfd7;border-radius:9px;background:#f7f6f2;color:#272e29}.ds-compose:focus-within{border-color:#994e2c}.ds-compose textarea{display:block;width:100%;min-height:53px;max-height:140px;resize:vertical;border:0;outline:none;background:transparent;color:#272e29;font:400 12px/1.8 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-compose textarea::placeholder{color:#61695f}"
+    },
+    {
+      "name": "当前材料卡片",
+      "kind": "card",
+      "refersTo": "material-scope",
+      "description": "协作面板内持续显示回答所围绕的材料。",
+      "html": "<div class=\"ds-scope\"><span>当前材料</span><strong title=\"相邻交换与逆序对\">相邻交换与逆序对</strong></div>",
+      "css": ".ds-scope{border:1px solid #dedfd7;border-radius:6px;background:#f7f6f2;color:#272e29;padding:10px 12px;font:400 14px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-scope>span{display:flex;align-items:center;gap:5px;font-size:9px;color:#61695f}.ds-scope>strong{display:block;margin-top:4px;font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+    },
+    {
+      "name": "阅读切换",
+      "kind": "nav",
+      "refersTo": "reading-switch",
+      "description": "阅读与源码模式，选中段采用纸面底色。",
+      "html": "<div class=\"ds-switch\" aria-label=\"笔记显示方式\"><button type=\"button\" aria-pressed=\"true\">阅读</button><button type=\"button\" aria-pressed=\"false\">源码</button></div>",
+      "css": ".ds-switch{display:flex;gap:2px;width:fit-content;padding:2px;border-radius:5px;background:#eeede7;font:400 14px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-switch button{border:0;border-radius:3px;background:transparent;padding:3px 9px;color:#61695f;font:400 10px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-switch button[aria-pressed=true]{background:#fffefa;color:#272e29}.ds-switch button:not(:disabled):hover{background:#eeede7}.ds-switch button:focus-visible{outline:2px solid #994e2c;outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-switch button{transition:none}}"
+    },
+    {
+      "name": "相邻交换演示",
+      "kind": "custom",
+      "refersTo": "swap-walkthrough",
+      "description": "初始状态的视觉样本；页面运行时联动更新数组、代价和解释。",
+      "html": "<section class=\"ds-walk\" aria-label=\"相邻交换样例\"><div class=\"ds-walk-head\"><strong>让结论走一遍</strong><span>示例 [3, 1, 2]</span></div><div class=\"ds-stage\"><div class=\"ds-array\"><span class=\"ds-moving\">3</span><span>1</span><span>2</span></div><div class=\"ds-cost\">累计代价 <strong>0</strong></div></div><p>先观察：3 的右边，有 1 和 2 两个更小的数。</p><footer><span>第 1 / 3 步</span><button type=\"button\">下一步 <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button></footer></section>",
+      "css": ".ds-walk{border:1px solid #dedfd7;border-radius:10px;padding:17px 20px 12px;background:#fffefa;color:#272e29;font:400 16px/1.9 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-walk-head{display:flex;justify-content:space-between;gap:8px;font-size:12px}.ds-walk-head>strong{font-weight:550}.ds-walk-head>span{font-size:10px;color:#61695f}.ds-stage{display:flex;justify-content:space-between;align-items:center;padding:21px 6px 14px}.ds-array{display:flex;gap:10px}.ds-array span{display:grid;place-items:center;width:48px;height:51px;border:1px solid #dedfd7;border-radius:6px;background:#eeede7;font-size:22px;font-weight:550;font-variant-numeric:tabular-nums;transition:background .2s ease,border-color .2s ease}.ds-array .ds-moving{border-color:#994e2c;color:#994e2c;background:#f1e7dd}.ds-cost{display:flex;align-items:baseline;gap:14px;font-size:11px;color:#61695f}.ds-cost strong{font-size:27px;font-weight:500;color:#272e29;font-variant-numeric:tabular-nums}.ds-walk>p{min-height:20px;margin:7px 0 17px;font-size:11px;line-height:1.8;color:#61695f}.ds-walk footer{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #dedfd7;padding-top:10px;font-size:10px;color:#61695f}.ds-walk button{display:flex;align-items:center;gap:5px;border:0;background:transparent;padding:3px;color:#994e2c;font:400 10px/1.9 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-walk button:hover{background:#eeede7}.ds-walk button:focus-visible{outline:2px solid #994e2c;outline-offset:3px}@media(max-width:700px){.ds-walk{padding:15px 15px 11px}.ds-array{gap:7px}.ds-array span{width:41px;height:46px;font-size:21px}.ds-stage{padding-left:0;padding-right:0}.ds-cost{gap:8px;font-size:10px}.ds-cost strong{font-size:24px}.ds-walk-head{font-size:11px}.ds-walk-head>span{font-size:9px}}@media(prefers-reduced-motion:reduce){.ds-array span,.ds-walk button{transition:none}}"
+    },
+    {
+      "name": "自测结果反馈",
+      "kind": "custom",
+      "refersTo": "quiz-feedback",
+      "description": "正确结果用完整单线边界、淡底和明确文字表达。",
+      "html": "<div class=\"ds-feedback\" role=\"status\"><strong>回答正确</strong><p>逆序对是 (3, 1) 和 (3, 2)，分别贡献 1 和 2，总代价为 3。</p></div>",
+      "css": ".ds-feedback{border:1px solid color-mix(in srgb,#44725c 35%,#dedfd7);border-radius:5px;padding:10px 14px;background:color-mix(in srgb,#44725c 6%,#fffefa);color:#272e29;font:400 13px/1.9 'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.ds-feedback strong{display:block;margin-bottom:6px;font-size:13px;font-weight:700}.ds-feedback p{margin:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "研习记录台",
+    "overview": "暖白纸面承载长篇理解，矿物灰绿组织工作区，墨色文字建立阅读层次，赤陶色标记可执行的下一步。整体像一张持续使用的研习记录台：精确、安静，内容和操作都能清楚定位。\n\n本系统记录已实现的 `?design=workspace` 交互初稿，只约束 `src/design-preview/` 内的预览世界。正式应用仍保留 `src/styles/tokens.css` 的既有系统；本文不声明替换其根级设计令牌。设置中的“批注阅读室”和“专注研究台”是探索外观，尚未成为品牌承诺；亮暗阅读状态属于本预览已实现的能力。",
+    "keyCharacteristics": [
+      "暖白纸面与矿物中性色，细线划分相邻区域。",
+      "中文展示字形与系统正文字体分工明确。",
+      "小面积赤陶色操作、柔和的选中底色和可识别的状态文字。",
+      "低起伏内容面，模态与临时反馈才使用明显阴影。",
+      "长文、公式和交互知识块共享阅读节奏。"
+    ],
+    "rules": [
+      {
+        "name": "The Scoped Palette Rule",
+        "body": "预览配色必须在预览容器内解析；不要把它写成正式应用的全局根变量。",
+        "section": "colors"
+      },
+      {
+        "name": "The Action Accent Rule",
+        "body": "赤陶色用于动作、选择和焦点；正确与学习状态仍使用各自的语义色与文字。",
+        "section": "colors"
+      },
+      {
+        "name": "The Display Ownership Rule",
+        "body": "笔记大标题、协作引导和字标使用本地展示字形；长篇正文和正文小节保留系统字体栈。",
+        "section": "typography"
+      },
+      {
+        "name": "The Reading Measure Rule",
+        "body": "阅读列保留最大宽度和居中内边距；空间不足时把辅助面板移入抽屉，不压缩为无法阅读的并排栏。",
+        "section": "layout"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "阅读内容保持平面；浮层用阴影说明暂时位于当前工作区之上。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 保留暖白纸面、墨色层次与小面积赤陶色操作的关系。",
+      "Do 在预览容器内使用令牌，维持正式应用与预览的样式边界。",
+      "Do 让长文、公式和知识块共享阅读宽度，并让超长公式横向滚动。",
+      "Do 保留当前材料范围、示例标记与实际执行状态，让视觉反馈说明真实行为。",
+      "Do 为交互控件提供键盘焦点，并尊重减少动画偏好。"
+    ],
+    "donts": [
+      "Don't 把探索外观或本预览的布局直接声明为正式应用的新品牌标准。",
+      "Don't 在文章大标题前重新加入重复的分类眉题；必要路径放在文档栏。",
+      "Don't 给自测结果加粗彩色侧边条；使用完整细轮廓、文字和淡底色。",
+      "Don't 宣称标题字库覆盖任意中文笔记，或把展示字体套用到整篇长文。",
+      "Don't 用成功样式暗示已经调用模型、上传图片或写入真实文件；当前仅演示 AI 回复并在浏览器保存预览草稿。"
+    ]
+  }
+}

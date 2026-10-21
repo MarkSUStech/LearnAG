@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import FilePicker from './FilePicker'
 import type { AgentStatus, WriterAttachment } from '../types'
+import { api } from '../api'
+import { IMAGE_ACCEPT, MAX_IMAGES, MAX_IMAGE_BYTES, isImageFile, imageUploadFile } from '../imageAttachments'
 
 export type Mode = '教学' | '探索' | '目标' | '写作'
 
@@ -8,7 +10,7 @@ interface Props {
   agent: AgentStatus
   mode: Mode
   onModeChange: (m: Mode) => void
-  onSend: (text: string, attachments: WriterAttachment[]) => void
+  onSend: (text: string, attachments: WriterAttachment[]) => void | boolean | Promise<void | boolean>
   onStop: () => void
   topSlot?: ReactNode
   planChip?: ReactNode
@@ -17,6 +19,7 @@ interface Props {
   engine?: 'api' | 'zcode'
   onOpenEngineSettings?: () => void
   detail?: { thought: string; tools: { name: string; detail: string }[] } | null
+  placement?: 'dock' | 'sidebar'
 }
 
 /** agent 面板（专家图标 / \ 唤起）：分组展示全部全局 agent */
@@ -44,17 +47,53 @@ const PLACEHOLDER: Record<Mode, string> = {
   写作: '描述笔记要求，例如：根据这篇论文和我的标注写一篇笔记…',
 }
 
-export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files, engine, onOpenEngineSettings, detail }: Props) {
+export default function InputBar({ agent, mode, onModeChange, onSend, onStop, topSlot, planChip, answering, files, engine, onOpenEngineSettings, detail, placement = 'dock' }: Props) {
   const [text, setText] = useState('')
   const [detailOpen, setDetailOpen] = useState(false)
-  const hasDetail = Boolean(detail && (detail.thought || (detail.tools && detail.tools.length)))
+  const hasDetail = Boolean(detail && ((detail.thought || '').trim() || (detail.tools && detail.tools.length)))
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('la-dock-collapsed') === '1')
   const [menuOpen, setMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [attachments, setAttachments] = useState<WriterAttachment[]>([])
+  const [images, setImages] = useState<{ id: string; file: File; url: string }[]>([])
+  const [sending, setSending] = useState(false)
+  const [attachmentError, setAttachmentError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  const imageRef = useRef<HTMLInputElement>(null)
+  const imagesRef = useRef(images)
+  imagesRef.current = images
+  const sendingRef = useRef(false)
+  const uploaded = useRef(new Map<string, WriterAttachment>())
   const taRef = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const hadQuestion = useRef(false)
+
+  useEffect(() => () => { imagesRef.current.forEach(p => URL.revokeObjectURL(p.url)) }, [])
+
+  function addImages(files: FileList | File[]) {
+    if (sendingRef.current) return
+    let next = [...imagesRef.current], error = ''
+    for (const file of [...files]) {
+      if (!isImageFile(file)) { error = '支持 PNG、JPEG、WebP、GIF 图片'; continue }
+      if (!file.size || file.size > MAX_IMAGE_BYTES) { error = '每张图片需大于0且不超过10MB'; continue }
+      if (next.length >= MAX_IMAGES) { error = `每次最多添加${MAX_IMAGES}张图片`; break }
+      next.push({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) })
+    }
+    imagesRef.current = next
+    setImages(next)
+    setAttachmentError(error)
+    taRef.current?.focus()
+  }
+
+  function removeImage(id: string) {
+    const item = imagesRef.current.find(p => p.id === id)
+    if (item) URL.revokeObjectURL(item.url)
+    uploaded.current.delete(id)
+    const next = imagesRef.current.filter(p => p.id !== id)
+    imagesRef.current = next
+    setImages(next)
+    setAttachmentError('')
+  }
 
   useEffect(() => {
     const ta = taRef.current
@@ -88,35 +127,72 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
     else localStorage.removeItem('la-dock-collapsed')
   }
 
-  function submit() {
+  async function submit() {
     const t = text.trim()
-    if (!t) return
+    if ((!t && !images.length) || sendingRef.current) return
     if (agent.running && !answering) return // 回答 AI 提问时允许提交
-    onSend(t, attachments)
-    setText('')
-    setAttachments([])
+    sendingRef.current = true
+    setSending(true)
+    setAttachmentError('')
+    try {
+      const paths: WriterAttachment[] = []
+      for (const image of images) {
+        let attachment = uploaded.current.get(image.id)
+        if (!attachment) {
+          const result = await api.uploadFile(imageUploadFile(image.file))
+          attachment = { path: result.path, primary: true }
+          uploaded.current.set(image.id, attachment)
+        }
+        paths.push(attachment)
+      }
+      const accepted = await onSend(t || '请看我发送的图片。', [...attachments, ...paths])
+      if (accepted === false) { setAttachmentError('发送未成功，图片和文字已保留，可重试'); return }
+      images.forEach(p => URL.revokeObjectURL(p.url))
+      uploaded.current.clear()
+      imagesRef.current = []
+      setImages([])
+      setText('')
+      setAttachments([])
+    } catch (e) {
+      setAttachmentError((e as Error).message || '图片上传失败，请重试')
+    } finally {
+      sendingRef.current = false
+      setSending(false)
+    }
   }
 
   return (
-    <div className={`dock${collapsed ? ' dock-collapsed' : ''}`}>
-      <button
+    <div className={`${placement === 'sidebar' ? 'assistant-composer' : `dock${collapsed ? ' dock-collapsed' : ''}`}${dragOver ? ' image-drag-over' : ''}`}
+      onDragOver={e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.stopPropagation(); setDragOver(true) } }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false) }}
+      onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); e.stopPropagation(); setDragOver(false); addImages(e.dataTransfer.files) } }}>
+      {placement === 'dock' && <button
         className="dock-toggle dock-expand"
         title="展开输入栏"
         onClick={() => setDock(false)}
       >
         <span className="material-symbols-rounded">keyboard_arrow_up</span>
         {agent.running && <i className="dock-running-dot" />}
-      </button>
+      </button>}
       <div className="dock-content">
-        <button
+        {placement === 'dock' && <button
           className="dock-toggle dock-collapse"
           title="收起输入栏"
           onClick={() => setDock(true)}
         >
           <span className="material-symbols-rounded">keyboard_arrow_down</span>
-        </button>
+        </button>}
+        {placement === 'sidebar' && <div className="assistant-modes" aria-label="学习模式">{AGENT_GROUPS.flatMap(group => group.items).map(item => <button key={item.id} aria-pressed={mode === item.id} onClick={() => onModeChange(item.id)}>{item.name}</button>)}</div>}
         {planChip}
         {topSlot}
+        {images.length > 0 && <div className="ib-images" aria-label="待发送图片">
+          {images.map(image => <div className="ib-image" key={image.id}>
+            <a href={image.url} target="_blank" rel="noreferrer" title={`预览 ${image.file.name}`}><img src={image.url} alt={image.file.name} /></a>
+            <span title={image.file.name}>{image.file.name}</span>
+            <button type="button" aria-label={`移除图片 ${image.file.name}`} disabled={sending} onClick={() => removeImage(image.id)}><span className="material-symbols-rounded">close</span></button>
+          </div>)}
+        </div>}
+        {(sending || attachmentError) && <div className={`ib-attachment-status${attachmentError ? ' error' : ''}`} role={attachmentError ? 'alert' : 'status'}>{attachmentError || '正在上传图片并发送…'}</div>}
         <div
           className={`status-line ${agent.message.startsWith('出错') ? 'err' : ''}${hasDetail ? ' clickable' : ''}${detailOpen ? ' open' : ''}`}
           title={hasDetail ? '点击展开思考过程与工具调用' : undefined}
@@ -177,6 +253,10 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
                 <span className="material-symbols-rounded">add</span>
               </button>
             )}
+            <button type="button" className="ib-add" title="添加图片（支持粘贴截图、拖入；API模型需支持视觉）" aria-label="添加图片" disabled={sending || images.length >= MAX_IMAGES} onClick={() => imageRef.current?.click()}>
+              <span className="material-symbols-rounded">add_photo_alternate</span>
+            </button>
+            <input ref={imageRef} type="file" accept={IMAGE_ACCEPT} multiple hidden aria-label="选择图片" onChange={e => { if (e.target.files) addImages(e.target.files); e.target.value = '' }} />
           </div>
           {attachments.length > 0 && (
             <div className="ib-attachments">
@@ -200,8 +280,14 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
             ref={taRef}
             rows={1}
             value={text}
+            disabled={sending}
+            aria-label="全局对话消息"
             placeholder={answering ? '回答 AI 的提问…（Enter 直接提交答案）' : PLACEHOLDER[mode]}
             onChange={(e) => setText(e.target.value)}
+            onPaste={e => {
+              const files = [...e.clipboardData.files].filter(isImageFile)
+              if (files.length) { e.preventDefault(); addImages(files) }
+            }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
               if (e.key === '\\') {
@@ -211,12 +297,13 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
                 return
               }
               if (e.key === 'Escape' && menuOpen) {
+                e.stopPropagation()
                 setMenuOpen(false)
                 return
               }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                submit()
+                void submit()
               }
             }}
           />
@@ -225,7 +312,7 @@ export default function InputBar({ agent, mode, onModeChange, onSend, onStop, to
               <span className="material-symbols-rounded">stop</span>
             </button>
           ) : (
-            <button className="send-btn" title={answering ? '提交回答' : '发送'} onClick={submit} disabled={!text.trim()}>
+            <button className="send-btn" title={answering ? '提交回答' : '发送'} onClick={() => void submit()} disabled={sending || (!text.trim() && !images.length)}>
               <span className="material-symbols-rounded">send</span>
             </button>
           )}

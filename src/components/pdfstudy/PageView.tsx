@@ -27,7 +27,7 @@ export default function PageView({ pdf, pageNumber, dim, scale, active }: Props)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
-  const textContentRef = useRef<any>(null)
+  const textContentRef = useRef<{ pdf: PDFDocumentProxy; page: number; content: Awaited<ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['getTextContent']>> } | null>(null)
   const [textReady, setTextReady] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const draftRef = useRef<Draft | null>(null)
@@ -76,26 +76,28 @@ export default function PageView({ pdf, pageNumber, dim, scale, active }: Props)
   useEffect(() => {
     if (!active || !pdf) return
     let cancelled = false
-    ;(async () => {
-      const page = await pdf.getPage(pageNumber)
-      if (cancelled) return
-      if (!textContentRef.current) {
-        textContentRef.current = await page.getTextContent()
+    let layer: TextLayer | null = null
+    const container = textLayerRef.current
+    setTextReady(false)
+    container?.replaceChildren()
+    void (async () => {
+      try {
+        const page = await pdf.getPage(pageNumber)
+        if (cancelled || !container) return
+        const cached = textContentRef.current
+        const content = cached?.pdf === pdf && cached.page === pageNumber ? cached.content : await page.getTextContent()
         if (cancelled) return
+        textContentRef.current = { pdf, page: pageNumber, content }
+        layer = new TextLayer({ textContentSource: content, container, viewport: page.getViewport({ scale }) })
+        await layer.render()
+        if (!cancelled) setTextReady(true)
+      } catch (error) {
+        if (!cancelled) console.warn('PDF 文本选择层加载失败', error)
       }
-      const container = textLayerRef.current
-      if (!container) return
-      container.replaceChildren()
-      const tl = new TextLayer({
-        textContentSource: textContentRef.current,
-        container,
-        viewport: page.getViewport({ scale }),
-      })
-      await tl.render()
-      if (!cancelled) setTextReady(true)
     })()
     return () => {
       cancelled = true
+      layer?.cancel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, pdf, pageNumber, scale])

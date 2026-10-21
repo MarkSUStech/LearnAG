@@ -17,6 +17,7 @@ import {
   resolvePendingAnswer,
   replayPendingQuestion,
   listSessionsApi,
+  sessionConversation,
   getActiveSession,
   createSessionApi,
   activateSessionApi,
@@ -24,12 +25,33 @@ import {
   renameSessionApi,
 } from './agent/runner.js'
 import { runTutor, stopTutor, isTutorRunning, loadTutorSession, clearTutorSession } from './agent/tutor.js'
+import {
+  runTeacher,
+  stopTeacher,
+  isTeacherRunning,
+  listTeacherSessionsApi,
+  createTeacherSessionApi,
+  activateTeacherSessionApi,
+  deleteTeacherSessionApi,
+  renameTeacherSessionApi,
+  loadTeacherHistory,
+  clearTeacherHistory,
+  ensureAllChatFiles,
+  archiveTeacherSession,
+  onChatFileRenamed,
+} from './agent/teacher.js'
 import { zcodeAvailable, zcodeCliPath, zcodeVersion, ensureZcodeMcp } from './agent/zcode.js'
 import { searchImages, downloadImageToVault } from './agent/imgsearch.js'
 import { runZcodeSubAgent } from './agent/runner.js'
 import { subAgentLabel } from './agent/subagent.js'
 import { extractPdfImages } from './agent/pdfimages.js'
+import { imagePaths, validateImageAttachments } from './agent/vision.js'
+import { findImages } from './agent/imageLibrary.js'
+import { inspectImage } from './agent/imageAssets.js'
+import { imageSourceStatus } from './agent/imageSources.js'
 import { syncNoteToGraph } from './agent/tools.js'
+import { generateOutline } from './pdfoutline.js'
+import { clearGeneratedOutline } from './pdfstudy.js'
 import { renderDiagram } from './render.js'
 import { streamChat } from './agent/runner.js'
 import { reportMermaidFailure } from './agent/mermaidfix.js'
@@ -188,6 +210,12 @@ vault.watchVault((evt) => {
   }
 })
 rag.initRag()
+// 教学对话文件迁移：给还没有 vault 文件的旧会话补建 教学对话/<标题>.md
+try {
+  ensureAllChatFiles()
+} catch (e) {
+  console.error('[teacher] 对话文件迁移失败:', e?.message || e)
+}
 
 // ── 设置 ────────────────────────────────────────────────────────────────────
 
@@ -299,8 +327,18 @@ app.post('/api/file', (req, res) => {
 })
 
 app.delete('/api/file', (req, res) => {
+  const p = String(req.query.path || '')
+  // 教学对话文件被删除（任意目录，frontmatter 识别）：同步归档其会话存储（避免重启迁移时复活文件）
+  if (/\.md$/i.test(p)) {
+    try {
+      const raw = vault.readFile(p)
+      const sid = raw.match(/^session:\s*(t-[a-z0-9-]+)\s*$/m)?.[1]
+      if (sid && /^type:\s*teaching-chat\s*$/m.test(raw)) archiveTeacherSession(sid)
+    } catch {
+      /* 文件不存在或非对话文件，忽略 */
+    }
+  }
   try {
-    const p = String(req.query.path || '')
     res.json(vault.deleteEntry(p))
     if (/\.pdf$/i.test(p)) {
       pdfstudy.removeDoc(p)
@@ -326,6 +364,17 @@ app.post('/api/rename', (req, res) => {
       rag.removeFile(from)
       rag.enqueue(to)
     }
+    // 教学对话文件改名（任意目录，靠 frontmatter 识别）：同步会话标题与文件内标题/frontmatter
+    if (/\.md$/i.test(String(to))) {
+      try {
+        const raw = vault.readFile(String(to))
+        if (/^type:\s*teaching-chat\s*$/m.test(raw) && /^session:\s*t-[a-z0-9-]+\s*$/m.test(raw)) {
+          onChatFileRenamed(String(to))
+        }
+      } catch {
+        /* 非对话文件忽略 */
+      }
+    }
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }
@@ -345,11 +394,10 @@ app.get('/api/graph', (req, res) => {
 
 app.post('/api/agent', async (req, res) => {
   const { message, mode, attachments, goalId } = req.body ?? {}
-  if (typeof message !== 'string' || !message.trim()) {
+  if (typeof message !== 'string' || (!message.trim() && !imagePaths(Array.isArray(attachments) ? attachments : []).length)) {
     return res.status(400).json({ error: '消息不能为空' })
   }
   if (isRunning()) return res.status(409).json({ error: 'agent 正在工作中，请稍候' })
-  res.json({ started: true })
   // 附带资料归一化：string 或 {path, primary, scope:{chapter,from,to}}
   const normScope = (sc) => {
     if (!sc || typeof sc !== 'object') return undefined
@@ -368,6 +416,10 @@ app.post('/api/agent', async (req, res) => {
     }
     return null
   }
+  const normalizedAttachments = Array.isArray(attachments) ? attachments.map(normAtt).filter(Boolean) : []
+  if (normalizedAttachments.length > 20) return res.status(400).json({ error: '每次最多附带20个文件（含图片）' })
+  try { validateImageAttachments(normalizedAttachments) } catch (e) { return res.status(400).json({ error: String(e.message || e) }) }
+  res.json({ started: true })
   // 引擎选择：设置里选了 ZCode 且本机 CLI 可用 → 整个任务交给 ZCode 无头执行；
   // CLI 缺失则回落 API 引擎并提示
   const useZcode = loadSettings().engine === 'zcode'
@@ -377,12 +429,10 @@ app.post('/api/agent', async (req, res) => {
   const run = useZcode && zcodeAvailable() ? runZcodeAgent : runAgent
   run({
     emit,
-    userMessage: message.trim(),
+    userMessage: message.trim() || '请看我发送的图片。',
     goalId: typeof goalId === 'string' ? goalId : '',
     mode: typeof mode === 'string' ? mode : '教学',
-    attachments: Array.isArray(attachments)
-      ? attachments.map(normAtt).filter(Boolean).slice(0, 20)
-      : [],
+    attachments: normalizedAttachments,
   }).catch((e) => {
     if (e.name === 'AbortError') {
       emit({ type: 'agent-done', stopped: true })
@@ -433,12 +483,13 @@ app.post('/internal/zcode/search', async (req, res) => {
 })
 
 // search_images：联网搜图 + SigLIP 语义重排
+app.get('/api/image-sources', (_req, res) => res.json({ sources: imageSourceStatus() }))
 app.post('/internal/zcode/img-search', async (req, res) => {
   try {
     const q = String(req.body?.query ?? '').trim()
     if (!q) return res.status(400).json({ error: 'query 不能为空' })
     console.log('[zcode-mcp] search_images:', q.slice(0, 80))
-    res.json(await searchImages(q, Math.min(10, Number(req.body?.count) || 6)))
+    res.json(await findImages({ ...req.body, query: q }))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }
@@ -448,13 +499,19 @@ app.post('/internal/zcode/img-search', async (req, res) => {
 app.post('/internal/zcode/img-download', async (req, res) => {
   try {
     console.log('[zcode-mcp] download_image:', String(req.body?.url || '').slice(0, 80))
-    res.json(await downloadImageToVault({ url: String(req.body?.url ?? ''), path: req.body?.path ? String(req.body.path) : undefined }))
+    res.json(await downloadImageToVault(req.body ?? {}))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }
 })
 
-// extract_pdf_images：提取 PDF 内嵌图片
+app.post('/internal/zcode/img-read', async (req, res) => {
+  try {
+    const result = await inspectImage(req.body ?? {})
+    res.json({ ...result, base64: fs.readFileSync(vault.resolveInVault(result.path)).toString('base64') })
+  } catch (error) { res.status(500).json({ error: String(error?.message || error) }) }
+})
+// extract_pdf_images：提取 PDF 内嵌图片与指定页面
 // delegate：把专项任务委派给按角色聚焦的 ZCode 子进程（与主任务同一 signal，停止时一并终止）
 app.post('/internal/zcode/delegate', async (req, res) => {
   if (!isRunning()) return res.status(409).json({ error: '当前没有进行中的任务' })
@@ -474,7 +531,7 @@ app.post('/internal/zcode/delegate', async (req, res) => {
 app.post('/internal/zcode/pdf-images', async (req, res) => {
   try {
     console.log('[zcode-mcp] extract_pdf_images:', String(req.body?.path || '').slice(0, 80))
-    res.json(await extractPdfImages({ path: String(req.body?.path ?? ''), min_size: req.body?.min_size, force: Boolean(req.body?.force) }))
+    res.json(await extractPdfImages({ path: String(req.body?.path ?? ''), min_size: req.body?.min_size, force: Boolean(req.body?.force), pages: req.body?.pages, mode: req.body?.mode }))
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }
@@ -495,6 +552,16 @@ app.get('/api/goals', (req, res) => {
 app.get('/api/sessions', (req, res) => {
   try {
     res.json({ sessions: listSessionsApi(), activeId: getActiveSession().id })
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+app.get('/api/sessions/:id/messages', (req, res) => {
+  try {
+    const messages = sessionConversation(req.params.id)
+    if (!messages) return res.status(404).json({ error: '会话不存在' })
+    res.json({ messages })
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }
@@ -544,7 +611,7 @@ const TEXT_EXTS = new Set([
 app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
   try {
     const rawName = String(req.query.filename || 'file.bin')
-    const safeName = rawName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120)
+    const safeName = rawName.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 120)
     const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? '')
     const stamp = Date.now().toString(36)
     const rel = `附件/${stamp}-${safeName}`
@@ -638,16 +705,117 @@ app.delete('/api/tutor/session', (req, res) => {
   }
 })
 
+// ── 教学模式（对话式引导学习 agent，独立会话存储） ──────────────────────────
+
+app.post('/api/teacher', async (req, res) => {
+  const { message, sessionId } = req.body ?? {}
+  if (typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: '消息不能为空' })
+  }
+  if (isTeacherRunning()) return res.status(409).json({ error: '教学助手正在回复中' })
+  // 附带文件（vault 相对路径，前端先经 /api/upload 上传）：图片走 vision，其余以路径告知
+  const attachments = Array.isArray(req.body?.attachments)
+    ? req.body.attachments
+        .filter((a) => typeof a === 'string' && a.trim())
+        .map((a) => a.trim().replace(/\\/g, '/'))
+        .slice(0, 6)
+    : []
+  try {
+    res.json({ started: true })
+    await runTeacher({ emit, message: message.trim(), sessionId: typeof sessionId === 'string' ? sessionId : '', attachments })
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      emit({ type: 'teacher-done', stopped: true })
+    } else {
+      console.error('[teacher] 运行失败:', e?.stack || e)
+      emit({ type: 'teacher-done', error: String(e.message || e) })
+    }
+  }
+})
+
+app.post('/api/teacher/stop', (req, res) => {
+  stopTeacher()
+  res.json({ ok: true })
+})
+
+app.get('/api/teacher/sessions', (req, res) => {
+  try {
+    res.json(listTeacherSessionsApi())
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) })
+  }
+})
+
+app.post('/api/teacher/sessions', (req, res) => {
+  try {
+    res.json(createTeacherSessionApi(String(req.body?.dir || ''))) // { session, path：vault 内对话文件（任意目录） }
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.post('/api/teacher/sessions/:id/activate', (req, res) => {
+  try {
+    res.json(activateTeacherSessionApi(req.params.id))
+  } catch (e) {
+    res.status(409).json({ error: String(e.message || e) })
+  }
+})
+
+app.put('/api/teacher/sessions/:id/title', (req, res) => {
+  try {
+    res.json(renameTeacherSessionApi(req.params.id, req.body?.title))
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.delete('/api/teacher/sessions/:id', (req, res) => {
+  try {
+    res.json(deleteTeacherSessionApi(req.params.id))
+  } catch (e) {
+    res.status(409).json({ error: String(e.message || e) })
+  }
+})
+
+app.get('/api/teacher/session', (req, res) => {
+  try {
+    res.json({ id: String(req.query.id || ''), messages: loadTeacherHistory(String(req.query.id || '')) })
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.delete('/api/teacher/session', (req, res) => {
+  try {
+    res.json(clearTeacherHistory(String(req.query.id || '')))
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+// 教学模式运行状态（页面刷新恢复按钮态用）
+app.get('/api/teacher/status', (req, res) => {
+  res.json({ running: isTeacherRunning() })
+})
+
 // 原始文件输出（资料预览器：PDF/图片/文本等）
 app.get('/api/raw', (req, res) => {
-  console.log('[raw] 请求文件:', String(req.query.path || ''))
   try {
     const abs = vault.resolveInVault(String(req.query.path || ''))
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    // sendFile 支持 Range/206 分段请求：pdf.js 对大 PDF 增量拉取，无需整本下载完才渲染
-    res.sendFile(abs, { headers: { 'Content-Type': mimeOf(abs) }, acceptRanges: true })
+    // sendFile 支持 Range/206 分段请求：pdf.js 对大 PDF 增量拉取，无需整本下载完才渲染。
+    // no-store + 关闭 ETag/Last-Modified：本地文件随时会被 agent 改写，浏览器缓存没有价值，
+    // 且一旦缓存体损坏（Windows 下 ERR_CACHE_READ_FAILURE 常见），no-cache 的 304 重校验
+    // 仍会复用坏缓存体导致 pdf.js 稳定 network error——干脆永不缓存，每次直读本地文件
+    res.sendFile(abs, {
+      headers: { 'Content-Type': mimeOf(abs), 'Cache-Control': 'no-store' },
+      acceptRanges: true,
+      etag: false,
+      lastModified: false,
+    })
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }
@@ -733,8 +901,40 @@ app.get('/api/pdf-study/outline', async (req, res) => {
     const p = String(req.query.path || '')
     const abs = vault.resolveInVault(p)
     if (!fs.existsSync(abs)) return res.status(404).json({ error: '文件不存在' })
-    const outline = await getOutlineTree(keyFor(p), abs)
-    res.json({ outline })
+    let outline = await getOutlineTree(keyFor(p), abs, p)
+    let outlineMeta = null
+    if (outline.length) {
+      // 书签优先；无书签时 getOutlineTree 已回退 AI 大纲，这里带出其元信息供前端展示
+      try {
+        outlineMeta = pdfstudy.loadDoc(p).outlineMeta
+      } catch {
+        /* ignore */
+      }
+    }
+    res.json({ outline, outlineMeta })
+  } catch (e) {
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+// AI 生成大纲：无书签的 PDF 由用户指定目录所在页，LLM 解析 + 页码偏移校准
+app.post('/api/pdf-study/outline/generate', async (req, res) => {
+  const p = String(req.body?.path || '')
+  try {
+    vault.resolveInVault(p)
+    if (!/\.pdf$/i.test(p)) throw new Error('仅支持 PDF 文件')
+    res.json(await generateOutline({ relPath: p, ranges: req.body?.ranges }))
+  } catch (e) {
+    console.error('[pdf-outline] 生成失败:', e?.message || e)
+    res.status(400).json({ error: String(e.message || e) })
+  }
+})
+
+app.delete('/api/pdf-study/outline', (req, res) => {
+  try {
+    const p = String(req.query.path || '')
+    vault.resolveInVault(p)
+    res.json(clearGeneratedOutline(p))
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
   }
@@ -757,6 +957,7 @@ app.get('/api/pdf-study/asset/:key/:file', (req, res) => {
     const ext = path.extname(abs).toLowerCase()
     const map = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
     res.setHeader('Content-Type', map[ext] || 'application/octet-stream')
+    res.setHeader('Cache-Control', 'no-store') // 贴图资产会被重新提取覆盖，避免陈旧/损坏的缓存体
     fs.createReadStream(abs).pipe(res)
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) })
@@ -858,10 +1059,17 @@ app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next()
   if (req.path.startsWith('/api/')) return next()
   try {
-    const abs = vault.resolveInVault(req.path)
+    // 浏览器把非 ASCII 路径百分号编码后才进 Express，先解码再定位 vault 文件
+    const decoded = decodeURIComponent(req.path)
+    const abs = vault.resolveInVault(decoded)
     if (path.basename(abs).startsWith('.')) return next()
     if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-      return res.sendFile(abs, { headers: { 'Content-Type': mimeOf(abs) }, acceptRanges: true })
+      return res.sendFile(abs, {
+        headers: { 'Content-Type': mimeOf(abs), 'Cache-Control': 'no-store' },
+        acceptRanges: true,
+        etag: false,
+        lastModified: false,
+      })
     }
   } catch {
     /* 越出 vault 或路径非法 → 透传 */

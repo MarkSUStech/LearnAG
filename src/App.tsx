@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import EditorPane from './components/EditorPane'
 import GraphView from './components/GraphView'
 import InputBar, { type Mode } from './components/InputBar'
+import AssistantPanel from './components/AssistantPanel'
 import GoalPicker from './components/GoalPicker'
 import SettingsDialog from './components/SettingsDialog'
 import QuestionCard from './components/QuestionCard'
@@ -14,9 +15,11 @@ import QuickSwitcher from './components/QuickSwitcher'
 import ReferenceBrowser from './components/ReferenceBrowser'
 import Toasts from './components/Toasts'
 import TutorPanel from './components/TutorPanel'
+import TeacherChat from './components/TeacherChat'
 import PromptDialog, { type DialogSpec } from './components/PromptDialog'
 import PdfStudyPane from './components/pdfstudy/PdfStudyPane'
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from './appearance'
+import { parseWorkspace, readLocal, writeLocal, workspaceKey, tabKey, type WorkspaceState } from './workspaceState'
 import type { AgentStatus, GoalInfo, GraphData, PendingQuestion, SessionMeta, Settings, Tab, ToastItem, TreeNode, WriterAttachment  } from './types'
 
 const IdeShell = lazy(() => import('./components/ide/IdeShell'))
@@ -38,6 +41,10 @@ const MAX_VISIBLE_TABS = 10
 export default function App() {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [vaultPath, setVaultPath] = useState('')
+  const [workspaceReady, setWorkspaceReady] = useState(false)
+  const [workspaceError, setWorkspaceError] = useState('')
+  const restoreEpoch = useRef(0)
+  const workspaceSnapshot = useRef<{ vault: string; state: WorkspaceState } | null>(null)
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeIdx, setActiveIdx] = useState(0)
   const [contents, setContents] = useState<Record<string, string>>({})
@@ -50,11 +57,13 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [dark, setDark] = useState(() => localStorage.getItem('la-theme') === 'dark')
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('la-mode') as Mode) || '教学')
-  // 应用级视图：学习模式 / IDE 模式（IDE 借鉴 Theia ApplicationShell 布局，见 components/ide/）
+  // 应用级视图：学习模式 / IDE 模式（IDE 借鉴 Theia ApplicationShell 布局，见 components/ide/）。
+  // 教学模式对话是 vault 里的文件（教学对话/*.md），点开即以 teach 标签进入，不再是独立应用视图
   const [appView, setAppView] = useState<'learn' | 'ide'>(() =>
     localStorage.getItem('la-app-view') === 'ide' ? 'ide' : 'learn',
   )
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia('(max-width: 760px)').matches)
+  const [assistantOpen, setAssistantOpen] = useState(() => window.matchMedia('(min-width: 1101px)').matches)
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
@@ -88,6 +97,31 @@ export default function App() {
   const [dragActive, setDragActive] = useState(false)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null) // 标签栏插入位置
   const [dragZone, setDragZone] = useState<'left' | 'right' | null>(null)
+
+  workspaceSnapshot.current = workspaceReady && vaultPath ? { vault: vaultPath, state: {
+    version: 1, tabs, activeKey: tabs[activeIdx] ? tabKey(tabs[activeIdx]) : '', splitTab, splitRatio,
+    sidebarWidth, assistantWidth: tutorWidth, sidebarCollapsed, assistantOpen, noteAssistant: Boolean(tutorFor),
+    viewport: window.matchMedia('(min-width: 1101px)').matches ? 'wide' : 'compact',
+  } } : null
+  function persistWorkspace() {
+    const snapshot = workspaceSnapshot.current
+    if (snapshot) writeLocal(workspaceKey(snapshot.vault), snapshot.state)
+  }
+  useEffect(() => {
+    const timer = setTimeout(persistWorkspace, 180)
+    return () => clearTimeout(timer)
+  }, [workspaceReady, vaultPath, tabs, activeIdx, splitTab, splitRatio, sidebarWidth, tutorWidth, sidebarCollapsed, assistantOpen, tutorFor])
+  useEffect(() => {
+    const save = () => persistWorkspace()
+    window.addEventListener('pagehide', save)
+    document.addEventListener('visibilitychange', save)
+    return () => { save(); window.removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', save) }
+  }, [])
+
+  function showAssistant() {
+    setAssistantOpen(true)
+    if (window.matchMedia('(max-width: 760px)').matches) setSidebarCollapsed(true)
+  }
 
   // 侧栏拖拽调宽（sidebar 向右拖 / tutor 向左拖）
   function startResize(e: React.MouseEvent, kind: 'sidebar' | 'tutor') {
@@ -134,6 +168,7 @@ export default function App() {
   const lastEditRef = useRef<Record<string, number>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const pendingSaves = useRef<Record<string, string>>({})
+  const saveRequests = useRef(new Map<string,Promise<boolean>>())
   const lastSentRef = useRef<Record<string, string>>({})
   const activeIdxRef = useRef(activeIdx)
   activeIdxRef.current = activeIdx
@@ -173,6 +208,17 @@ export default function App() {
     localStorage.setItem('la-app-view', appView)
   }, [appView])
 
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.modal-mask')) {
+        setAssistantOpen(false)
+        if (window.matchMedia('(max-width: 760px)').matches) setSidebarCollapsed(true)
+      }
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [])
+
   function toast(text: string, error = false) {
     const id = Math.random()
     setToasts((t) => [...t, { id, text, error }])
@@ -190,21 +236,53 @@ export default function App() {
       .catch(() => undefined)
 
   // ── 启动 ────────────────────────────────────────────────────────────────
+  async function restoreWorkspace() {
+    const epoch = ++restoreEpoch.current
+    setWorkspaceReady(false)
+    setWorkspaceError('')
+    try {
+      const result = await api.getTree()
+      const saved = parseWorkspace(readLocal(workspaceKey(result.vaultPath), null))
+      const files = new Set(flattenFiles(result.tree))
+      const candidates = saved ? [...saved.tabs, ...(saved.splitTab ? [saved.splitTab] : [])] : [{ kind: 'note' as const, path: '欢迎.md' }]
+      const restoredContents: Record<string,string> = {}
+      const restored = await Promise.all(candidates.map(async (tab): Promise<Tab | null> => {
+        if (tab.kind === 'graph' || tab.kind === 'refs') return tab
+        if (!files.has(tab.path)) return null
+        if (tab.kind === 'pdf') return tab
+        try {
+          const file = await api.getFile(tab.path)
+          restoredContents[tab.path] = file.content
+          const sessionId = teachSessionOf(file.content)
+          return sessionId ? { kind: 'teach', path: tab.path, sessionId } : { kind: 'note', path: tab.path }
+        } catch { return null }
+      }))
+      if (epoch !== restoreEpoch.current) return
+      const valid = restored.filter((tab): tab is Tab => Boolean(tab))
+      const split = saved?.splitTab ? valid.find(tab => tabKey(tab) === tabKey(saved.splitTab!)) || null : null
+      const nextTabs = valid.filter(tab => tab !== split)
+      const nextActive = Math.max(0,nextTabs.findIndex(tab => tabKey(tab) === saved?.activeKey))
+      setTree(result.tree); setVaultPath(result.vaultPath); setContents(restoredContents)
+      setTabs(nextTabs); setSplitTab(split); setActiveIdx(nextActive)
+      if (saved) {
+        setSidebarWidth(saved.sidebarWidth); setTutorWidth(saved.assistantWidth); setSplitRatio(saved.splitRatio)
+        const viewport = window.matchMedia('(min-width: 1101px)').matches ? 'wide' : 'compact'
+        if (saved.viewport === viewport) { setSidebarCollapsed(saved.sidebarCollapsed); setAssistantOpen(saved.assistantOpen) }
+        const active = nextTabs[nextActive]
+        setTutorFor(saved.noteAssistant && (active?.kind === 'note' || active?.kind === 'pdf') ? active.path : null)
+      }
+      setWorkspaceReady(true)
+    } catch (error) { if (epoch === restoreEpoch.current) setWorkspaceError('工作区恢复失败：' + (error as Error).message) }
+  }
+
   useEffect(() => {
-    refreshTree()
+    void restoreWorkspace()
     refreshSessions()
     refreshGoals()
     api.getSettings().then(setSettings).catch(() => undefined)
     api.getGraph().then(setGraph).catch(() => undefined)
-    // 默认打开欢迎页
-    api
-      .getFile('欢迎.md')
-      .then((f) => {
-        setContents((c) => ({ ...c, [f.path]: f.content }))
-        setTabs([{ kind: 'note', path: f.path }])
-        setActiveIdx(0)
-      })
-      .catch(() => undefined)
+    api.agentStatus().then(status => { if (status.running) setAgent({ running: true, stage: 'thinking', message: '任务正在进行中…' }) }).catch(() => undefined)
+    return () => { restoreEpoch.current++ }
   }, [])
 
   // ── 文件打开 / 保存 ─────────────────────────────────────────────────────
@@ -284,6 +362,43 @@ export default function App() {
     toast(`知识库中未找到「${title || '该来源'}」`)
   }
 
+  /** 对话文件 frontmatter → 会话 id（type: teaching-chat + session: t-xxx 同时匹配才算） */
+  function teachSessionOf(content: string): string | null {
+    const fm = content.match(/^---\r?\n[\s\S]*?\r?\n---/)?.[0] ?? ''
+    if (!/^type:\s*teaching-chat\s*$/m.test(fm)) return null
+    return fm.match(/^session:\s*(t-[a-z0-9-]+)\s*$/m)?.[1] ?? null
+  }
+
+  /** 在标签栏打开/激活一个教学对话标签 */
+  function openTeachTab(path: string, sessionId: string) {
+    flushSaves()
+    setTabs((ts) => {
+      const i = ts.findIndex((t) => t.kind === 'teach' && t.sessionId === sessionId)
+      if (i >= 0) {
+        const next = i >= MAX_VISIBLE_TABS ? activateTabReal(ts, i) : ts
+        if (i < MAX_VISIBLE_TABS) setActiveIdx(i)
+        return next.map((t) => (t.kind === 'teach' && t.sessionId === sessionId ? { ...t, path } : t))
+      }
+      const next = [...ts]
+      next.splice(activeIdxRef.current + 1, 0, { kind: 'teach', path, sessionId })
+      const ai = next.findIndex((t) => t.kind === 'teach' && t.sessionId === sessionId)
+      if (ai >= MAX_VISIBLE_TABS) return activateTabReal(next, ai)
+      setActiveIdx(ai)
+      return next
+    })
+  }
+
+  /** 新建教学对话：服务端创建会话 + 对话文件（dir 为空则在 vault 根目录），直接打开新标签 */
+  async function newTeachChat(dir?: string) {
+    try {
+      const r = await api.teacherCreateSession(dir)
+      if (r.path) openTeachTab(r.path, r.session.id)
+      refreshTree()
+    } catch (e) {
+      toast((e as Error).message, true)
+    }
+  }
+
   async function openNote(path: string) {
     if (path.toLowerCase().endsWith('.pdf')) {
       openPdf(path)
@@ -295,6 +410,22 @@ export default function App() {
       return
     }
     flushSaves()
+    // 先取内容：frontmatter 标识为教学对话的 md → 直接以 teach 标签进入对话（不再限定目录）
+    let content = contentsRef.current[path]
+    if (content === undefined) {
+      try {
+        content = (await api.getFile(path)).content
+        setContents((c) => ({ ...c, [path]: content! }))
+      } catch (e) {
+        toast((e as Error).message, true)
+        return
+      }
+    }
+    const sid = teachSessionOf(content)
+    if (sid) {
+      openTeachTab(path, sid)
+      return
+    }
     setTabs((ts) => {
       const i = ts.findIndex((t) => t.kind === 'note' && t.path === path)
       if (i >= 0) {
@@ -309,14 +440,6 @@ export default function App() {
       setActiveIdx(ai)
       return next
     })
-    if (contentsRef.current[path] === undefined) {
-      try {
-        const f = await api.getFile(path)
-        setContents((c) => ({ ...c, [path]: f.content }))
-      } catch (e) {
-        toast((e as Error).message, true)
-      }
-    }
     setConflicts((cf) => ({ ...cf, [path]: false }))
   }
 
@@ -326,24 +449,27 @@ export default function App() {
     saveTimers.current[path] = setTimeout(() => void flushOne(path), SAVE_DEBOUNCE)
   }
 
-  async function flushOne(path: string) {
+  async function flushOne(path: string): Promise<boolean> {
+    const ongoing = saveRequests.current.get(path)
+    if (ongoing) return ongoing.then(saved => saved ? flushOne(path) : false)
     const content = pendingSaves.current[path]
-    if (content === undefined) return
-    delete pendingSaves.current[path]
+    if (content === undefined) return true
     if (saveTimers.current[path]) {
       clearTimeout(saveTimers.current[path])
       delete saveTimers.current[path]
     }
-    try {
-      await api.saveFile(path, content)
+    const request = api.saveFile(path,content).then(() => {
       lastSentRef.current[path] = content
-    } catch (e) {
-      toast('保存失败：' + (e as Error).message, true)
-    }
+      if (pendingSaves.current[path] === content) delete pendingSaves.current[path]
+      return true
+    }).catch(error => { toast('保存失败，修改仍保留，可按 Ctrl+S 重试：' + (error as Error).message,true); return false })
+      .finally(() => saveRequests.current.delete(path))
+    saveRequests.current.set(path,request)
+    return request
   }
 
   function flushSaves() {
-    for (const p of Object.keys(pendingSaves.current)) void flushOne(p)
+    return Promise.all(Object.keys(pendingSaves.current).map(path => flushOne(path))).then(results => results.every(Boolean))
   }
 
   useEffect(() => {
@@ -351,8 +477,7 @@ export default function App() {
       if (appViewRef.current === 'ide') return // IDE 模式由 IdeShell 自管快捷键
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        flushSaves()
-        toast('已保存')
+        void flushSaves().then(saved => { if (saved) toast('已保存') })
       }
       // Ctrl+P / Alt+K 快速切换（Ctrl+K 会被浏览器保留拦截）
       if (
@@ -371,9 +496,10 @@ export default function App() {
   // [[wikilink]] 跳转：按标题匹配 vault 内的笔记文件
   function openWikilink(title: string) {
     const all = flattenFiles(tree)
+    const wanted = title.split('#')[0].replace(/\\/g, '/').replace(/^\.\//, '').replace(/\.md$/i, '').toLowerCase()
     const target = all.find((p) => {
       const name = p.split('/').pop() ?? ''
-      return name.replace(/\.md$/i, '') === title || name.toLowerCase() === title.toLowerCase()
+      return p.replace(/\.md$/i, '').toLowerCase() === wanted || name.replace(/\.md$/i, '').toLowerCase() === wanted
     })
     if (target) void openNote(target)
     else toast(`笔记「${title}」不存在`)
@@ -538,13 +664,27 @@ export default function App() {
     setTutorFor((cur) => (cur && activeDocPath !== cur ? null : cur))
   }, [activeDocPath])
 
-  // ── 新建 / 删除 / 改名 ──────────────────────────────────────────────────
-  async function createEntry(_parent: string | null, kind: 'file' | 'folder', name: string) {
-    const p = kind === 'file' && !name.endsWith('.md') ? name + '.md' : name
+  // ── 新建 / 删除 / 改名（parent 为 null 表示 vault 根目录；任何文件夹都可在其下新建） ──
+  async function createEntry(parent: string | null, kind: 'file' | 'folder', name: string) {
+    const base = parent ? `${parent}/${name}` : name
+    const p = kind === 'file' && !name.endsWith('.md') ? base + '.md' : base
     try {
       await api.createEntry(p, kind)
       refreshTree()
       if (kind === 'file') void openNote(p)
+    } catch (e) {
+      toast((e as Error).message, true)
+    }
+  }
+
+  /** 新建代码/文本文件：文件名含扩展名，原样创建（.py/.js/.c/…）；缺扩展名按 .txt 兜底 */
+  async function createCodeFile(parent: string | null, name: string) {
+    const safe = name.includes('.') ? name : name + '.txt'
+    const p = parent ? `${parent}/${safe}` : safe
+    try {
+      await api.createEntry(p, 'file')
+      refreshTree()
+      toast('已创建 ' + p)
     } catch (e) {
       toast((e as Error).message, true)
     }
@@ -574,7 +714,13 @@ export default function App() {
         return n
       })
       setTabs((ts) =>
-        ts.map((t) => (t.kind === 'note' && t.path === from ? { kind: 'note', path: newName } : t)),
+        ts.map((t) =>
+          t.kind === 'note' && t.path === from
+            ? { kind: 'note', path: newName }
+            : t.kind === 'teach' && t.path === from
+              ? { ...t, path: newName }
+              : t,
+        ),
       )
       if (lastSentRef.current[from] !== undefined) {
         lastSentRef.current[newName] = lastSentRef.current[from]
@@ -585,24 +731,41 @@ export default function App() {
   }
 
   // ── Agent ───────────────────────────────────────────────────────────────
+  function showUserMessage(text: string, attachments: WriterAttachment[]) {
+    window.dispatchEvent(new CustomEvent('global-agent-sse', { detail: {
+      type: 'agent-user', sessionId: activeSessionId,
+      message: { role: 'user', content: text, images: attachments.map(item => typeof item === 'string' ? item : item.path).filter(path => /\.(png|jpe?g|webp|gif)$/i.test(path)) },
+    } }))
+  }
+
   async function sendToAgent(text: string, attachments: WriterAttachment[] = [], modeOverride?: string) {
+    showAssistant()
+    setTutorFor(null)
     // 有待回答的提问 → 本次输入直接作为答案提交
     if (pendingQuestion) {
       try {
-        await api.answerQuestion(pendingQuestion.id, text)
+        await api.answerQuestion(pendingQuestion.id, attachments.length
+          ? { value: text, files: attachments.map(a => ({ path: a.path, name: a.path.split('/').pop() || '附件' })) }
+          : text)
         setPendingQuestion(null)
+        showUserMessage(text, attachments)
+        return true
       } catch (e) {
         toast((e as Error).message, true)
+        return false
       }
-      return
     }
     flushSaves()
     setAgent({ running: true, stage: 'thinking', message: '正在思考…' })
+    setAgentDetail(null)
     try {
       await api.sendAgent(text, modeOverride ?? mode, attachments, selectedGoalId || undefined)
+      showUserMessage(text, attachments)
+      return true
     } catch (e) {
       setAgent({ running: false, stage: 'idle', message: '' })
       toast((e as Error).message, true)
+      return false
     }
   }
 
@@ -638,7 +801,10 @@ export default function App() {
   // ── 会话 ────────────────────────────────────────────────────────────────
   async function newSession() {
     try {
-      await api.createSession()
+      const result = await api.createSession()
+      setActiveSessionId(result.session.id)
+      showAssistant()
+      setTutorFor(null)
       refreshSessions()
       toast('已开始新对话')
     } catch (e) {
@@ -650,6 +816,8 @@ export default function App() {
     try {
       await api.activateSession(id)
       setActiveSessionId(id)
+      showAssistant()
+      setTutorFor(null)
       setAgent({ running: false, stage: 'idle', message: '' })
       toast('已切换对话')
     } catch (e) {
@@ -675,7 +843,11 @@ export default function App() {
         if (kind === 'unlink' || kind === 'unlink-dir') {
           setTabs((ts) => {
             const next = ts.filter(
-              (t) => !(t.kind === 'note' && (t.path === path || t.path.startsWith(path + '/'))),
+              (t) =>
+                !(
+                  (t.kind === 'note' || t.kind === 'teach') &&
+                  (t.path === path || t.path.startsWith(path + '/'))
+                ),
             )
             return next
           })
@@ -703,12 +875,14 @@ export default function App() {
         api.getGraph().then(setGraph).catch(() => undefined)
         break
       case 'vault-changed': {
+        persistWorkspace()
+        setWorkspaceReady(false)
         setVaultPath(e.vaultPath as string)
         setContents({})
         setTabs((ts) => ts.filter((t) => t.kind === 'graph'))
         setActiveIdx(0)
         setPendingQuestion(null)
-        refreshTree()
+        void restoreWorkspace()
         refreshSessions()
         refreshGoals()
         api.getGraph().then(setGraph).catch(() => undefined)
@@ -717,6 +891,8 @@ export default function App() {
       }
       case 'agent-write': {
         const path = e.path as string
+        // Conversation text remains archived on disk; its live UI now belongs in the AI rail.
+        if (path === 'Agent/工作台.md') { if (e.done) refreshTree(); break }
         const content = e.content as string
         const done = e.done as boolean
         const exists = tabsRef.current.some((t) => t.kind === 'note' && t.path === path)
@@ -739,6 +915,8 @@ export default function App() {
         break
       }
       case 'agent-question':
+        showAssistant()
+        setTutorFor(null)
         setPendingQuestion({
           id: e.id as string,
           question: e.question as string,
@@ -758,11 +936,21 @@ export default function App() {
       case 'agent-question-closed':
         setPendingQuestion((q) => (q && q.id === e.id ? null : q))
         break
+      case 'agent-reply':
+        window.dispatchEvent(new CustomEvent('global-agent-sse', { detail: e }))
+        break
       case 'tutor-delta':
       case 'tutor-status':
       case 'tutor-done':
         // 桥接给答疑面板（TutorPanel 自行按 path 过滤）
         window.dispatchEvent(new MessageEvent('tutor-sse', { data: JSON.stringify(e) }))
+        break
+      case 'teacher-delta':
+      case 'teacher-status':
+      case 'teacher-file':
+      case 'teacher-done':
+        // 桥接给教学模式对话（TeacherChat 自行按 sessionId 过滤；teacher-file 携带改名后的文件路径）
+        window.dispatchEvent(new MessageEvent('teacher-sse', { data: JSON.stringify(e) }))
         break
       case 'agent-status': {
         const stage = e.stage as string
@@ -773,6 +961,7 @@ export default function App() {
         break
       }
       case 'agent-done': {
+        window.dispatchEvent(new CustomEvent('global-agent-sse', { detail: e }))
         const error = e.error as string | undefined
         const stopped = e.stopped as boolean | undefined
         setAgent({
@@ -826,7 +1015,7 @@ export default function App() {
               <button onClick={() => setConflicts((cf) => ({ ...cf, [p]: false }))}>忽略</button>
             </div>
           )}
-          <div className={`editor-stack ${tutorFor === p && !isSplit ? 'tutor-open' : ''}`}>
+          <div className="editor-stack">
             {contents[p] !== undefined ? (
               <EditorPane
                 key={p}
@@ -840,24 +1029,14 @@ export default function App() {
                 onMarkLearned={(pp, title) => void markLearned(pp, title)}
                 learnedRunning={Boolean(learnedFlow)}
                 celebrate={celebratePath === p}
-                tutorOpen={tutorFor === p && !isSplit}
-                onToggleTutor={() => setTutorFor((cur) => (cur === p ? null : p))}
+                tutorOpen={assistantOpen && tutorFor === p && !isSplit}
+                onToggleTutor={() => { setTutorFor((cur) => (cur === p && assistantOpen ? null : p)); showAssistant() }}
               />
             ) : (
               <div className="empty-state">
                 <span className="material-symbols-rounded">progress_activity</span>
                 加载中…
               </div>
-            )}
-            {tutorFor === p && !isSplit && (
-              <TutorPanel
-                notePath={p}
-                noteTitle={p.split('/').pop()?.replace(/\.md$/, '') ?? ''}
-                width={tutorWidth}
-                onResizeStart={(e) => startResize(e, 'tutor')}
-                onClose={() => setTutorFor(null)}
-                onOpenSource={(info) => void openCitation(info, p)}
-              />
             )}
           </div>
         </>
@@ -871,10 +1050,24 @@ export default function App() {
             path={p}
             dark={dark}
             files={flattenFiles(tree)}
+            tutorOpen={assistantOpen && tutorFor === p}
+            onToggleTutor={() => { setTutorFor(current => current === p && assistantOpen ? null : p); showAssistant() }}
             jumpHint={pdfJump?.path === p ? pdfJump : undefined}
+            onJumpApplied={() => setPdfJump(current => current?.path === p ? null : current)}
             onComposeNotes={(message, attachments) => void sendToAgent(message, attachments, '写作')}
           />
         </div>
+      )
+    }
+    if (tab.kind === 'teach') {
+      return (
+        <TeacherChat
+          sessionId={tab.sessionId}
+          onPathChange={(np) =>
+            setTabs((ts) => ts.map((t) => (t.kind === 'teach' && t.sessionId === tab.sessionId ? { ...t, path: np } : t)))
+          }
+          onNewChat={() => void newTeachChat()}
+        />
       )
     }
     if (tab.kind === 'graph') return <GraphView graph={graph} onOpenNote={(path) => void openNote(path)} />
@@ -883,7 +1076,7 @@ export default function App() {
     return (
       <div className="empty-state">
         <span className="material-symbols-rounded">note_stack</span>
-        <div>从左侧打开一篇笔记，或用下方输入框与 agent 交流</div>
+        <div>从左侧打开一篇笔记，或在右侧与 AI 交流</div>
       </div>
     )
   }
@@ -898,15 +1091,17 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app learning-workspace">
       <Sidebar
         collapsed={sidebarCollapsed}
         width={sidebarWidth}
         onResizeStart={(e) => startResize(e, 'sidebar')}
         tree={tree}
         activePath={activeNotePath}
-        onOpen={(p) => void openNote(p)}
+        onOpen={(p) => { void openNote(p); if (window.matchMedia('(max-width: 760px)').matches) setSidebarCollapsed(true) }}
         onCreate={createEntry}
+        onCreateCode={createCodeFile}
+        onCreateTeachChat={(dir) => void newTeachChat(dir)}
         onDelete={deleteEntry}
         onRename={renameEntry}
         onOpenDialog={setDialog}
@@ -917,6 +1112,7 @@ export default function App() {
         onToggleTheme={() => setDark((d) => !d)}
         dark={dark}
         vaultName={vaultName}
+        vaultScope={vaultPath}
         graphOpen={activeTab?.kind === 'graph'}
         refsOpen={activeTab?.kind === 'refs'}
         sessions={sessions}
@@ -930,11 +1126,15 @@ export default function App() {
         onOpenSwitcher={() => setSwitcherOpen(true)}
         agentRunning={agent.running}
       />
+      {!sidebarCollapsed && <button className="workspace-nav-scrim" aria-label="关闭文件导航" onClick={() => setSidebarCollapsed(true)} />}
       <div className="app-main" style={{ ['--tutor-w' as string]: `${tutorWidth}px` }}>
         <div className="tabbar">
           <button
             className="icon-btn"
             title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            aria-label={sidebarCollapsed ? '展开文件导航' : '收起文件导航'}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="workspace-navigation"
             onClick={() => setSidebarCollapsed((c) => !c)}
             style={{ marginBottom: 4 }}
           >
@@ -942,7 +1142,14 @@ export default function App() {
           </button>
           <div className="tabbar-scroll">
           {tabs.slice(0, MAX_VISIBLE_TABS).map((tab, i) => {
-            const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
+            const tabKey =
+              tab.kind === 'note'
+                ? tab.path
+                : tab.kind === 'pdf'
+                  ? `pdf:${tab.path}`
+                  : tab.kind === 'teach'
+                    ? `teach:${tab.path}`
+                    : tab.kind
             const tabTitle =
               tab.kind === 'graph'
                 ? '知识图谱'
@@ -966,7 +1173,15 @@ export default function App() {
                 }}
               >
                 <span className="material-symbols-rounded">
-                  {tab.kind === 'graph' ? 'hub' : tab.kind === 'refs' ? 'folder_open' : tab.kind === 'pdf' ? 'picture_as_pdf' : 'description'}
+                  {tab.kind === 'graph'
+                    ? 'hub'
+                    : tab.kind === 'refs'
+                      ? 'folder_open'
+                      : tab.kind === 'pdf'
+                        ? 'picture_as_pdf'
+                        : tab.kind === 'teach'
+                          ? 'school'
+                          : 'description'}
                 </span>
                 <span className="tab-title">{tabTitle}</span>
                 {streaming[tab.kind === 'note' ? tab.path : ''] && <span className="dot" />}
@@ -1044,7 +1259,14 @@ export default function App() {
                 <div className="tab-fold-menu">
                   {tabs.slice(MAX_VISIBLE_TABS).map((tab, k) => {
                     const realIdx = MAX_VISIBLE_TABS + k
-                    const tabKey = tab.kind === 'note' ? tab.path : tab.kind === 'pdf' ? `pdf:${tab.path}` : tab.kind
+                    const tabKey =
+                      tab.kind === 'note'
+                        ? tab.path
+                        : tab.kind === 'pdf'
+                          ? `pdf:${tab.path}`
+                          : tab.kind === 'teach'
+                            ? `teach:${tab.path}`
+                            : tab.kind
                     const tabTitle =
                       tab.kind === 'graph'
                         ? '知识图谱'
@@ -1062,7 +1284,15 @@ export default function App() {
                           }}
                         >
                           <span className="material-symbols-rounded">
-                            {tab.kind === 'graph' ? 'hub' : tab.kind === 'refs' ? 'folder_open' : tab.kind === 'pdf' ? 'picture_as_pdf' : 'description'}
+                            {tab.kind === 'graph'
+                              ? 'hub'
+                              : tab.kind === 'refs'
+                                ? 'folder_open'
+                                : tab.kind === 'pdf'
+                                  ? 'picture_as_pdf'
+                                  : tab.kind === 'teach'
+                                    ? 'school'
+                                    : 'description'}
                           </span>
                           <span className="tab-title">{tabTitle}</span>
                           {streaming[tab.kind === 'note' ? tab.path : ''] && <span className="dot" />}
@@ -1086,6 +1316,7 @@ export default function App() {
               )}
             </div>
           )}
+          <button className={`icon-btn assistant-toggle${assistantOpen ? ' active' : ''}`} aria-label={assistantOpen ? '收起 AI 侧栏' : '展开 AI 侧栏'} aria-expanded={assistantOpen} aria-controls="global-assistant" onClick={() => assistantOpen ? setAssistantOpen(false) : showAssistant()} title="AI 协作侧栏"><span className="material-symbols-rounded">right_panel_open</span><span>AI</span>{agent.running && <i />}</button>
         </div>
 
         <div
@@ -1102,7 +1333,8 @@ export default function App() {
             ) : (
               <div className="empty-state">
                 <span className="material-symbols-rounded">note_stack</span>
-                <div>从左侧打开一篇笔记，或用下方输入框与 agent 交流</div>
+                <div>{workspaceError || (workspaceReady ? '从左侧打开一篇笔记，或在右侧与 AI 交流' : '正在恢复上次工作区…')}</div>
+                {workspaceError && <button className="btn" onClick={() => void restoreWorkspace()}>重试恢复</button>}
               </div>
             )}
           </div>
@@ -1146,11 +1378,30 @@ export default function App() {
           </>
         )}
 
-        <InputBar
+      </div>
+      {assistantOpen && <button className="assistant-scrim" aria-label="关闭 AI 侧栏" onClick={() => setAssistantOpen(false)} />}
+      <AssistantPanel
+        open={assistantOpen}
+        width={tutorWidth}
+        sessionId={activeSessionId}
+        sessionTitle={sessions.find(session => session.id === activeSessionId)?.title || '新对话'}
+        agent={agent}
+        noteTitle={activeDocPath?.split('/').pop()?.replace(/\.(md|pdf)$/, '')}
+        noteOpen={Boolean(tutorFor)}
+        onGlobal={() => setTutorFor(null)}
+        onNote={() => { if (activeDocPath) setTutorFor(activeDocPath) }}
+        onClose={() => setAssistantOpen(false)}
+        onNewSession={() => void newSession()}
+        onResizeStart={event => startResize(event, 'tutor')}
+        onWikilink={openWikilink}
+        onOpenCite={info => void openCitation(info, activeNotePath || undefined)}
+        notePanel={tutorFor ? <TutorPanel key={tutorFor} notePath={tutorFor} noteTitle={tutorFor.split('/').pop()?.replace(/\.(md|pdf)$/, '') || ''} width={tutorWidth} onResizeStart={event => startResize(event, 'tutor')} onClose={() => setTutorFor(null)} onOpenSource={info => void openCitation(info, tutorFor)} /> : undefined}
+        composer={<InputBar
+          placement="sidebar"
           agent={agent}
           mode={mode}
           onModeChange={setMode}
-          onSend={(t, attachments) => void sendToAgent(t, attachments)}
+          onSend={(t, attachments) => sendToAgent(t, attachments)}
           onStop={stopAgent}
           answering={Boolean(pendingQuestion)}
           files={flattenFiles(tree)}
@@ -1167,8 +1418,8 @@ export default function App() {
               />
             ) : undefined
           }
-        />
-      </div>
+        />}
+      />
 
       {switcherOpen && <QuickSwitcher files={flattenFiles(tree)} onOpen={(p) => void openNote(p)} onClose={() => setSwitcherOpen(false)} />}
       {settingsOpen && settings && (

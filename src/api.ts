@@ -1,4 +1,4 @@
-import type { AnswerValue, GoalInfo, GraphData, RagStatus, Settings, TreeNode, WriterAttachment } from './types'
+import type { AnswerValue, ConversationMessage, GoalInfo, GraphData, RagStatus, SessionMeta, Settings, TreeNode, WriterAttachment } from './types'
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -82,6 +82,7 @@ export const api = {
     }),
   getGoals: () => http<{ goals: GoalInfo[] }>('/api/goals'),
   stopAgent: () => http<{ ok: boolean }>('/api/agent/stop', { method: 'POST' }),
+  agentStatus: () => http<{ running: boolean }>('/api/agent/status'),
   answerQuestion: (id: string, value: AnswerValue) =>
     http<{ ok: boolean }>('/api/agent/answer', {
       method: 'POST',
@@ -100,6 +101,7 @@ export const api = {
     return json as { path: string; name: string; size: number; preview?: UploadPreview }
   },
   listSessions: () => http<{ sessions: SessionMetaApi[]; activeId: string }>('/api/sessions'),
+  sessionMessages: (id: string) => http<{ messages: ConversationMessage[] }>(`/api/sessions/${encodeURIComponent(id)}/messages`),
   createSession: () => http<{ session: SessionMetaApi }>('/api/sessions', { method: 'POST' }),
   activateSession: (id: string) => http<{ ok: boolean }>(`/api/sessions/${id}/activate`, { method: 'POST' }),
   deleteSession: (id: string) => http<{ ok: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),
@@ -122,6 +124,36 @@ export const api = {
     ),
   tutorClear: (path: string) =>
     http<{ ok: boolean }>(`/api/tutor/session?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  // ── 教学模式（对话式引导学习） ──
+  teacherSend: (message: string, sessionId?: string, attachments?: string[]) =>
+    http<{ started: boolean }>('/api/teacher', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, sessionId: sessionId || undefined, attachments: attachments?.length ? attachments : undefined }),
+    }),
+  teacherStop: () => http<{ ok: boolean }>('/api/teacher/stop', { method: 'POST' }),
+  teacherStatus: () => http<{ running: boolean }>('/api/teacher/status'),
+  teacherSessions: () => http<{ sessions: SessionMeta[]; activeId: string }>('/api/teacher/sessions'),
+  teacherCreateSession: (dir?: string) =>
+    http<{ session: SessionMeta; path: string }>('/api/teacher/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: dir || undefined }),
+    }),
+  teacherActivateSession: (id: string) => http<{ ok: boolean }>(`/api/teacher/sessions/${id}/activate`, { method: 'POST' }),
+  teacherDeleteSession: (id: string) => http<{ ok: boolean }>(`/api/teacher/sessions/${id}`, { method: 'DELETE' }),
+  teacherRenameSession: (id: string, title: string) =>
+    http<{ ok: boolean }>(`/api/teacher/sessions/${id}/title`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    }),
+  teacherHistory: (id: string) =>
+    http<{ id: string; messages: { role: 'user' | 'assistant'; content: string }[] }>(
+      `/api/teacher/session?id=${encodeURIComponent(id)}`,
+    ),
+  teacherClear: (id: string) =>
+    http<{ ok: boolean }>(`/api/teacher/session?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   ragStatus: () => http<RagStatus>('/api/rag/status'),
   reindexRag: () => http<{ started: boolean }>('/api/rag/reindex', { method: 'POST' }),
 }

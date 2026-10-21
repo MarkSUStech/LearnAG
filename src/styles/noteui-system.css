@@ -1,0 +1,78 @@
+/* Semantic aliases resolve at the surface, including scoped IDE theme overrides. */
+:is(.noteui, .nui-catalog, .nui-popover-panel, .nui-gallery) {
+  --nui-canvas: var(--bg);
+  --nui-surface: var(--panel);
+  --nui-soft: var(--panel-2);
+  --nui-ink: var(--text);
+  --nui-muted: var(--text-2);
+  --nui-border: var(--border);
+  --nui-accent: var(--accent);
+  --nui-success: var(--mastered);
+  --nui-warning: var(--learning);
+  --nui-danger: var(--danger);
+  --nui-space-1: 4px;
+  --nui-space-inner: 8px;
+  --nui-space-group: 16px;
+  --nui-space-section: 24px;
+  --nui-radius-sm: 4px;
+  --nui-radius-md: 8px;
+  --nui-radius-lg: 12px;
+  --nui-font-caption: 12px;
+  --nui-font-body: 14px;
+  --nui-font-heading: 16px;
+  --nui-font-number: 24px;
+  --nui-font-code: 12px;
+  --nui-mono: 'Cascadia Code', Consolas, monospace;
+  --nui-shadow: 0 4px 16px rgb(0 0 0 / 10%);
+  --nui-motion: 160ms;
+  --nui-ease: cubic-bezier(.16, 1, .3, 1);
+}
+.nui-gap-inner { --nui-gap: var(--nui-space-inner); }
+.nui-gap-group { --nui-gap: var(--nui-space-group); }
+.nui-gap-section { --nui-gap: var(--nui-space-section); }
+.nui-align-start { align-items: flex-start; }
+.nui-align-center { align-items: center; }
+.nui-align-end { align-items: flex-end; }
+.nui-align-stretch { align-items: stretch; }
+.nui-layout-col, .nui-layout-row, .nui-layout-grid { gap: var(--nui-gap, var(--nui-space-group)); min-width: 0; }
+.nui-layout-col { display: flex; flex-direction: column; }
+.nui-layout-row { display: flex; flex-wrap: wrap; }
+.nui-layout-row > * { flex: 1 1 min(240px, 100%); min-width: 0; }
+.nui-layout-grid { display: grid; grid-template-columns: repeat(var(--nui-columns, 2), minmax(0, 1fr)); }
+.nui-columns-2 { --nui-columns: 2; }.nui-columns-3 { --nui-columns: 3; }.nui-columns-4 { --nui-columns: 4; }
+@container (max-width: 600px) { .nui-layout-grid { grid-template-columns: minmax(0, 1fr); } }
+@container (min-width: 601px) and (max-width: 900px) { .nui-columns-3, .nui-columns-4 { --nui-columns: 2; } }
+.nui-cell { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.noteui .nui-cell > .rich-md > :first-child, .nui-cell .noteui:first-child { margin-top: 0; }
+.noteui .nui-cell > .rich-md > :last-child, .nui-cell .noteui:last-child { margin-bottom: 0; }
+.noteui .nui-cell .rich-md-fragment > p + p { margin-top: var(--nui-space-inner); }
+.noteui .nui-cell :is(h2, h3, h4) { font-size: var(--nui-font-heading); margin: var(--nui-space-group) 0 var(--nui-space-inner); }
+.nui-cell img { display: block; max-width: 100%; height: auto; border-radius: var(--nui-radius-md); }
+.nui-layout-card { border: 1px solid var(--nui-border); border-radius: var(--nui-radius-lg); padding: var(--nui-space-group); background: var(--nui-surface); }
+.nui-layout-card .nui-layout-card { border: 0; border-radius: 0; padding: 0; background: transparent; }
+.nui-tone-soft { background: var(--nui-soft); border-color: transparent; padding: var(--nui-space-group); border-radius: var(--nui-radius-md); }
+.nui-layout-divider { border: 0; border-top: 1px solid var(--nui-border); margin: 0; }
+.nui-layout-spacer { flex: 1; min-height: var(--nui-gap, 16px); }
+.nui-carousel-track { display: flex; gap: var(--nui-gap, 16px); overflow-x: auto; scroll-snap-type: x mandatory; position: relative; padding: 4px 2px 12px; }
+.nui-carousel-track > * { flex: 0 0 min(85%, 360px); scroll-snap-align: start; }
+.nui-popover-panel { position: fixed; z-index: 250; width: min(380px, calc(100vw - 24px)); max-height: min(420px, calc(100dvh - 24px)); overflow: auto; padding: var(--nui-space-group); background: var(--nui-surface); color: var(--nui-ink); border: 1px solid var(--nui-border); border-radius: var(--nui-radius-md); box-shadow: var(--nui-shadow); font: inherit; }
+.nui-popover-panel > header { display: flex; align-items: center; justify-content: space-between; gap: var(--nui-space-inner); margin-bottom: var(--nui-space-group); }
+.nui-popover-panel .rich-md { font-size: var(--nui-font-body); }
+.nui-button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--nui-border); border-radius: var(--nui-radius-md); color: var(--nui-ink); background: var(--nui-surface); font: inherit; transition: background var(--nui-motion) var(--nui-ease); }
+.nui-button-primary { background: var(--nui-accent); border-color: var(--nui-accent); color: var(--nui-surface); }
+.nui-button-ghost { border-color: transparent; background: transparent; }
+.nui-button:hover:not(:disabled) { background: var(--nui-soft); }.nui-button-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--nui-accent) 90%, var(--nui-ink)); }
+.nui-button:active:not(:disabled) { background: var(--accent-weak); color: var(--nui-ink); }
+.nui-button:disabled { cursor: default; opacity: .5; }
+.nui-input { min-width: 0; max-width: 100%; min-height: 36px; border: 1px solid var(--nui-border); border-radius: var(--nui-radius-md); padding: 8px 12px; font: inherit; color: var(--nui-ink); background: var(--nui-surface); }
+.nui-input::placeholder { color: var(--nui-muted); }.nui-input:disabled { opacity: .6; cursor: not-allowed; }
+.nui-input[aria-invalid=true] { border-color: var(--nui-danger); }
+.nui-check, .nui-radio-group label { display: flex; gap: var(--nui-space-inner); align-items: center; min-height: 36px; }
+.nui-radio-group { border: 0; padding: 0; margin: 0; }.nui-radio-group legend { margin-bottom: var(--nui-space-inner); }
+:is(.nui-slider, .nui-check, .nui-radio-group) input { accent-color: var(--nui-accent); }
+.nui-slider label { display: flex; align-items: center; justify-content: space-between; gap: var(--nui-space-inner); }
+.nui-slider output { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; }
+.nui-slider input { width: 100%; margin: var(--nui-space-inner) 0; }
+.nui-slider .nui-meta { display: flex; justify-content: space-between; }
+:is(.nui-popover-panel, .nui-gallery) :is(button, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--nui-accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .nui-button, .nui-popover-panel { transition: none; animation: none; } }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Crepe } from '@milkdown/crepe'
 import { editorViewCtx, editorViewOptionsCtx } from '@milkdown/kit/core'
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state'
@@ -6,6 +6,9 @@ import { Decoration, DecorationSet } from '@milkdown/kit/prose/view'
 import { replaceAll, $prose } from '@milkdown/kit/utils'
 import { codeBlockNodeView, mathInlineNodeView } from './mermaidNodeView'
 import { attachCiteHover, parseCiteDefs } from '../../cite'
+import { hasNoteUIMarker } from '../../noteui/parser'
+import { parseWikilink } from '../../markdown/wikilink'
+import RichText from '../RichText'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 
@@ -161,7 +164,27 @@ interface Props {
  * - 用户编辑 → onChange 回调（去抖由父层处理）
  * - 点击 [[wikilink]] → onWikilink
  */
-export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOpenCite, readonly, notePath, autoFixBlocked }: Props) {
+const SourceEditor = lazy(() => import('../ide/CodeEditor'))
+
+// Route directive-bearing documents around WYSIWYG serialization. All read-only previews
+// (IDE split/float, references, PDF cards) acquire NoteUI without separate parsing paths.
+export default function MilkdownEditor(props: Props) {
+  // Latch source mode until unmount, so deleting/typing a directive cannot swap editors mid-keystroke.
+  const [sourceMode, setSourceMode] = useState(() => hasNoteUIMarker(props.value))
+  const hasMarker = useMemo(() => hasNoteUIMarker(props.value), [props.value])
+  const id = useId()
+  useEffect(() => { if (hasMarker) setSourceMode(true) }, [hasMarker])
+  if (props.readonly && hasMarker) return <div className="note-read-preview"><RichText text={props.value} onOpenCite={props.onOpenCite} onWikilink={props.onWikilink} /></div>
+  if (!props.readonly && (sourceMode || hasMarker)) return <>
+    <div className="noteui-edit-hint">Markdown 源码 · 指令和数据按原文保存，切换「阅读」查看交互效果</div>
+    <div className="noteui-source-editor"><Suspense fallback={<div>源码编辑器加载中…</div>}>
+      <SourceEditor path={`.noteui-source/${props.notePath ?? id + '.md'}`} value={props.value} dark={props.dark} onChange={(_path, value) => props.onChange(value)} />
+    </Suspense></div>
+  </>
+  return <MilkdownDocument {...props} />
+}
+
+function MilkdownDocument({ value, dark, onChange, onWikilink, onOpenCite, readonly, notePath, autoFixBlocked }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const crepeRef = useRef<Crepe | null>(null)
   const viewRef = useRef<any>(null)
@@ -298,7 +321,7 @@ export default function MilkdownEditor({ value, dark, onChange, onWikilink, onOp
             const wl = (e.target as HTMLElement)?.closest?.('.wikilink') as HTMLElement | null
             if (!wl) return
             const m = /^\[\[([^\[\]\n]+)\]\]$/.exec(wl.textContent ?? '')
-            if (m?.[1]) onWikilinkRef.current?.(m[1].trim())
+            if (m?.[1]) onWikilinkRef.current?.(parseWikilink(m[1]).target)
           })
           // 引用角标悬浮来源卡片：从 value prop（原始 markdown）解析 [^n]: 定义
           disposeCiteHover.current = attachCiteHover(

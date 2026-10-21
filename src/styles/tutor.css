@@ -253,6 +253,21 @@
   overflow-x: auto;
   font-size: 12px;
 }
+/* 配图与 mermaid 图：等比缩到面板宽度内（超宽图横向滚动，不裁切） */
+.tutor-msg.assistant .rich-md img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 6px 0;
+}
+.tutor-msg.assistant .rich-md .mermaid {
+  overflow-x: auto;
+}
+.tutor-msg.assistant .rich-md .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
 .tutor-msg.assistant .rich-md .callout {
   border-left: 3px solid var(--callout-color, #3b82f6);
   background: color-mix(in srgb, var(--callout-color, #3b82f6) 8%, transparent);

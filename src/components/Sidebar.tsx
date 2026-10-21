@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SessionMeta, TreeNode } from '../types'
 import type { DialogSpec } from './PromptDialog'
+import { readLocal, writeLocal, workspaceKey } from '../workspaceState'
 
 interface Props {
   tree: TreeNode[]
   activePath: string | null
   onOpen: (path: string) => void
   onCreate: (parent: string | null, kind: 'file' | 'folder', name: string) => void
+  onCreateCode?: (parent: string | null, name: string) => void
+  onCreateTeachChat?: (dir?: string) => void
   onDelete: (path: string) => void
   onRename: (path: string, newName: string) => void
+  onTreeContextMenu?: (node: TreeNode, x: number, y: number) => void
   onOpenDialog: (spec: DialogSpec) => void
   onOpenGraph: () => void
   onOpenRefs: () => void
@@ -17,6 +21,7 @@ interface Props {
   onToggleTheme: () => void
   dark: boolean
   vaultName: string
+  vaultScope?: string
   graphOpen: boolean
   refsOpen: boolean
   collapsed: boolean
@@ -32,10 +37,32 @@ interface Props {
   onResizeStart: (e: React.MouseEvent) => void
 }
 
+/** 代码文件扩展名 → 树里显示代码图标 */
+const CODE_EXT_RE = /\.(py|js|mjs|cjs|ts|tsx|jsx|java|c|h|cpp|hpp|cc|cs|go|rs|rb|php|swift|kt|sh|bat|ps1|sql|r|html?|css|scss|json|ya?ml|toml|ini|csv)$/i
+
+/** 右键菜单状态：树里任意文件/文件夹 */
+interface CtxMenu {
+  x: number
+  y: number
+  node: TreeNode
+}
+
 export default function Sidebar(props: Props) {
   const { tree, vaultName, collapsed, width } = props
+  const sidebarRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const sidebar = sidebarRef.current
+    if (!sidebar) return
+    if (collapsed && sidebar.contains(document.activeElement)) document.querySelector<HTMLButtonElement>('[aria-controls="workspace-navigation"]')?.focus()
+    sidebar.inert = collapsed
+  }, [collapsed])
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
   return (
     <aside
+      id="workspace-navigation"
+      ref={sidebarRef}
+      aria-label="文件与对话导航"
+      aria-hidden={collapsed}
       className={`sidebar ${collapsed ? 'collapsed' : ''}`}
       style={{ width: collapsed ? 0 : width }}
     >
@@ -132,11 +159,24 @@ export default function Sidebar(props: Props) {
         </div>
         {tree.length === 0 && <div className="tree-empty">知识库是空的，新建一篇笔记开始吧</div>}
         {tree.map((node) => (
-          <TreeItem key={node.path} node={node} {...props} depth={0} />
+          <TreeItem
+            key={node.path}
+            node={node}
+            {...props}
+            onTreeContextMenu={(n, x, y) =>
+              setCtxMenu({ node: n, x: Math.min(x, window.innerWidth - 190), y: Math.min(y, window.innerHeight - 230) })
+            }
+            depth={0}
+          />
         ))}
       </div>
 
       <div className="side-foot">
+        {props.onCreateTeachChat && (
+          <button className="icon-btn" title="新建教学对话（引导学习）" onClick={() => props.onCreateTeachChat?.()}>
+            <span className="material-symbols-rounded">school</span>
+          </button>
+        )}
         {props.onOpenIde && (
           <button className="icon-btn" title="IDE 模式（代码编辑器）" onClick={props.onOpenIde}>
             <span className="material-symbols-rounded">code_blocks</span>
@@ -166,6 +206,114 @@ export default function Sidebar(props: Props) {
           {vaultName}
         </div>
       </div>
+
+      {/* 树右键菜单：任意文件夹都可新建笔记/教学对话/代码文件/文件夹；文件可重命名/删除 */}
+      {ctxMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 90 }}
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setCtxMenu(null)
+            }}
+          />
+          <div className="tree-ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+            {ctxMenu.node.type === 'folder' && (
+              <>
+                <button
+                  onClick={() => {
+                    setCtxMenu(null)
+                    props.onOpenDialog({
+                      title: `在「${ctxMenu.node.name}」中新建笔记`,
+                      placeholder: '笔记名称',
+                      okText: '创建',
+                      onOk: (name) => props.onCreate(ctxMenu.node.path, 'file', name),
+                    })
+                  }}
+                >
+                  <span className="material-symbols-rounded">note_add</span>新建笔记
+                </button>
+                {props.onCreateTeachChat && (
+                  <button
+                    onClick={() => {
+                      setCtxMenu(null)
+                      props.onCreateTeachChat?.(ctxMenu.node.path)
+                    }}
+                  >
+                    <span className="material-symbols-rounded">school</span>新建教学对话
+                  </button>
+                )}
+                {props.onCreateCode && (
+                  <button
+                    onClick={() => {
+                      setCtxMenu(null)
+                      props.onOpenDialog({
+                        title: `在「${ctxMenu.node.name}」中新建代码文件`,
+                        placeholder: '文件名（含扩展名，如 main.py）',
+                        initial: 'untitled.py',
+                        okText: '创建',
+                        onOk: (name) => props.onCreateCode?.(ctxMenu.node.path, name.trim()),
+                      })
+                    }}
+                  >
+                    <span className="material-symbols-rounded">code_blocks</span>新建代码文件
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setCtxMenu(null)
+                    props.onOpenDialog({
+                      title: `在「${ctxMenu.node.name}」中新建文件夹`,
+                      placeholder: '文件夹名称',
+                      okText: '创建',
+                      onOk: (name) => props.onCreate(ctxMenu.node.path, 'folder', name),
+                    })
+                  }}
+                >
+                  <span className="material-symbols-rounded">create_new_folder</span>新建文件夹
+                </button>
+                <div className="tcm-sep" />
+              </>
+            )}
+            <button
+              onClick={() => {
+                setCtxMenu(null)
+                props.onOpenDialog({
+                  title: ctxMenu.node.type === 'folder' ? `重命名文件夹「${ctxMenu.node.name}」` : `重命名「${ctxMenu.node.name}」`,
+                  initial: ctxMenu.node.name,
+                  okText: '重命名',
+                  onOk: (name) => {
+                    if (name.trim() && name !== ctxMenu.node.name) {
+                      const dir = ctxMenu.node.path.includes('/')
+                        ? ctxMenu.node.path.slice(0, ctxMenu.node.path.lastIndexOf('/') + 1)
+                        : ''
+                      props.onRename(ctxMenu.node.path, dir + name.trim())
+                    }
+                  },
+                })
+              }}
+            >
+              <span className="material-symbols-rounded">edit</span>重命名
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                setCtxMenu(null)
+                props.onOpenDialog({
+                  kind: 'confirm',
+                  title: `删除「${ctxMenu.node.name}」？${ctxMenu.node.type === 'folder' ? '（文件夹内容将一并删除）' : ''}`,
+                  okText: '删除',
+                  danger: true,
+                  onOk: () => props.onDelete(ctxMenu.node.path),
+                })
+              }}
+            >
+              <span className="material-symbols-rounded">delete</span>删除
+            </button>
+          </div>
+        </>
+      )}
     </aside>
   )
 }
@@ -178,28 +326,20 @@ function TreeItem({
   node: TreeNode
   depth: number
 } & Omit<Props, 'tree' | 'vaultName'>) {
-  const [open, setOpen] = useState(node.path === '知识图谱')
+  const expansionKey = workspaceKey(props.vaultScope || '') + ':folder:' + node.path
+  const [open, setOpen] = useState(() => readLocal<boolean>(expansionKey, node.path === '知识图谱' || Boolean(props.activePath?.startsWith(node.path + '/'))))
   const isFolder = node.type === 'folder'
+  const toggle = () => setOpen(current => { writeLocal(expansionKey,!current); return !current })
 
   return (
     <div>
       <div
         className={`tree-item ${!isFolder && props.activePath === node.path ? 'active' : ''}`}
         style={{ paddingLeft: 6 }}
-        onClick={() => (isFolder ? setOpen((o) => !o) : props.onOpen(node.path))}
+        onClick={() => (isFolder ? toggle() : props.onOpen(node.path))}
         onContextMenu={(e) => {
           e.preventDefault()
-          props.onOpenDialog({
-            title: isFolder ? `重命名文件夹「${node.name}」` : `重命名「${node.name}」`,
-            initial: node.name,
-            okText: '重命名',
-            onOk: (name) => {
-              if (name !== node.name) {
-                const dir = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/') + 1) : ''
-                props.onRename(node.path, dir + name)
-              }
-            },
-          })
+          props.onTreeContextMenu?.(node, e.clientX, e.clientY)
         }}
       >
         {isFolder ? (
@@ -208,7 +348,7 @@ function TreeItem({
               className={`material-symbols-rounded caret ${open ? 'open' : ''}`}
               onClick={(e) => {
                 e.stopPropagation()
-                setOpen((o) => !o)
+                toggle()
               }}
             >
               chevron_right
@@ -217,7 +357,13 @@ function TreeItem({
           </>
         ) : (
           <span className="material-symbols-rounded" style={{ marginLeft: 21 }}>
-            {node.path.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
+            {node.path.toLowerCase().endsWith('.pdf')
+              ? 'picture_as_pdf'
+              : node.chat
+                ? 'school'
+                : CODE_EXT_RE.test(node.path.toLowerCase())
+                  ? 'code_blocks'
+                  : 'description'}
           </span>
         )}
         <span className="name">{node.name.replace(/\.(md|pdf)$/i, '')}</span>

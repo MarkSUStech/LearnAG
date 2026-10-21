@@ -1590,3 +1590,151 @@ html[data-theme='dark'] .ps-ann.mask {
   pointer-events: none;
 }
 
+
+/* ── AI 生成大纲 ─────────────────────────────────────────────────────────── */
+.ps-gen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.1s ease;
+}
+.ps-gen-btn:hover {
+  filter: brightness(1.05);
+}
+.ps-gen-btn:active {
+  transform: scale(0.96);
+}
+.ps-gen-btn .material-symbols-rounded {
+  font-size: 16px;
+}
+.ps-gen-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-gen-dialog {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  animation: msgIn 0.18s ease-out;
+}
+.ps-gen-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14.5px;
+  margin-bottom: 10px;
+}
+.ps-gen-title .material-symbols-rounded {
+  color: var(--accent);
+  font-size: 19px;
+}
+.ps-gen-hint {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+.ps-gen-hint code {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+.ps-gen-dialog input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13px;
+  outline: none;
+}
+.ps-gen-dialog input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.ps-gen-err {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.6;
+}
+.ps-gen-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.ps-gen-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ps-gen-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.ps-gen-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ps-ol-ai-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ps-ol-ai-foot span {
+  flex: 1;
+}
+.ps-ol-ai-foot button {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+  display: flex;
+}
+.ps-ol-ai-foot button:hover {
+  color: var(--accent);
+  background: var(--panel-2);
+}
+.ps-ol-ai-foot .material-symbols-rounded {
+  font-size: 15px;
+}

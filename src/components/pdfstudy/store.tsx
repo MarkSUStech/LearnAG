@@ -3,7 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { psApi, uid } from './api'
-import type { Annotation, Card, CardPurpose, OutlineNode, TextSelectionInfo, ToolMode } from './types'
+import type { Annotation, Card, CardPurpose, OutlineMeta, OutlineNode, TextSelectionInfo, ToolMode } from './types'
+import { bounded, readLocal, writeLocal } from '../../workspaceState'
 
 export interface PageDim {
   w: number
@@ -39,17 +40,19 @@ export interface Toast {
 }
 
 function useStoreImpl(docPath: string) {
+  const savedView = useRef(readLocal<Record<string,unknown>>('la-view:pdf:' + docPath, {})).current
   // ── 数据 ──────────────────────────────────────────────────────────────────
   const [docTitle, setDocTitle] = useState('')
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [outline, setOutline] = useState<OutlineNode[] | null>(null)
+  const [outlineMeta, setOutlineMeta] = useState<OutlineMeta | null>(null)
   const [pageCount, setPageCount] = useState(0)
   const [pageDims, setPageDims] = useState<PageDim[]>([])
   const [docError, setDocError] = useState('')
 
   // ── 查看器 ────────────────────────────────────────────────────────────────
-  const [scale, setScale] = useState(1.2)
+  const [scale, setScale] = useState(() => bounded(savedView.scale,.4,4,1.2))
   const [currentPage, setCurrentPage] = useState(1)
   /** 缩放请求（顶栏按钮/快捷键）：由 PdfViewer 消费，以视口中心为锚点 */
   const [zoomReq, setZoomReq] = useState<{ dir: 'in' | 'out'; ts: number } | null>(null)
@@ -61,9 +64,10 @@ function useStoreImpl(docPath: string) {
   const [maskColor, setMaskColor] = useState('#1f2430')
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const [rightOpen, setRightOpen] = useState(true)
-  const [rightTab, setRightTab] = useState<'cards' | 'anns' | 'tags'>('cards')
-  const [outlineOpen, setOutlineOpen] = useState(true)
+  // 面板默认收起：打开 PDF 先看正文，需要时再点开（大纲 FAB / 卡片按钮）
+  const [rightOpen, setRightOpen] = useState(savedView.rightOpen === true)
+  const [rightTab, setRightTab] = useState<'cards' | 'anns' | 'tags'>(savedView.rightTab === 'anns' || savedView.rightTab === 'tags' ? savedView.rightTab : 'cards')
+  const [outlineOpen, setOutlineOpen] = useState(savedView.outlineOpen === true)
   const [selection, setSelection] = useState<TextSelectionInfo | null>(null)
   const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null)
   const [cardEditor, setCardEditor] = useState<{ card?: Card; draft?: CardDraft } | null>(null)
@@ -72,6 +76,7 @@ function useStoreImpl(docPath: string) {
   const [cardFocus, setCardFocus] = useState<{ cardId: string; ts: number } | null>(null)
   const [flash, setFlash] = useState<FlashTarget | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  useEffect(() => { writeLocal('la-view:pdf:' + docPath, {scale,rightOpen,rightTab,outlineOpen}) }, [docPath,scale,rightOpen,rightTab,outlineOpen])
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = uid()
@@ -88,19 +93,35 @@ function useStoreImpl(docPath: string) {
   const dataRef = useRef<{ annotations: Annotation[]; cards: Card[] }>({ annotations: [], cards: [] })
   dataRef.current = useMemo(() => ({ annotations, cards }), [annotations, cards])
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const docLoaded = useRef(false), dirty = useRef(false)
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
+  const flushDoc = useCallback(() => {
+    if (!dirty.current || !docLoaded.current) return
+    const snapshot = dataRef.current
+    saveQueue.current = saveQueue.current.catch(() => undefined).then(() => psApi.putDoc(docPath,snapshot)).then(() => {
+      if (dataRef.current === snapshot) dirty.current = false
+    }).catch(error => toast('保存失败：' + String((error as Error).message || error),'error'))
+  }, [docPath,toast])
 
   const scheduleSave = useCallback(() => {
+    dirty.current = true
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      void psApi
-        .putDoc(docPath, dataRef.current)
-        .catch((e) => toast('保存失败：' + String((e as Error).message || e), 'error'))
+      flushDoc()
     }, 400)
-  }, [docPath, toast])
+  }, [flushDoc])
+
+  useEffect(() => {
+    const flush = () => { if (saveTimer.current) clearTimeout(saveTimer.current); flushDoc() }
+    window.addEventListener('pagehide',flush)
+    document.addEventListener('visibilitychange',flush)
+    return () => { flush(); window.removeEventListener('pagehide',flush); document.removeEventListener('visibilitychange',flush) }
+  }, [flushDoc])
 
   // 切换文档时加载标注 + 大纲（PDF 本体由 PdfViewer 直接加载）
   useEffect(() => {
     let alive = true
+    docLoaded.current = false
     setDocTitle(docPath.split('/').pop()?.replace(/\.pdf$/i, '') ?? docPath)
     setAnnotations([])
     setCards([])
@@ -117,12 +138,21 @@ function useStoreImpl(docPath: string) {
         if (!alive) return
         setAnnotations(d.annotations)
         setCards(d.cards)
+        docLoaded.current = true
       })
       .catch((e) => alive && setDocError(String((e as Error).message || e)))
     psApi
       .getOutline(docPath)
-      .then((r) => alive && setOutline(r.outline))
-      .catch(() => alive && setOutline([]))
+      .then((r) => {
+        if (!alive) return
+        setOutline(r.outline)
+        setOutlineMeta(r.outlineMeta ?? null)
+      })
+      .catch(() => {
+        if (!alive) return
+        setOutline([])
+        setOutlineMeta(null)
+      })
     return () => {
       alive = false
       if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -130,6 +160,16 @@ function useStoreImpl(docPath: string) {
   }, [docPath])
 
   // ── 标注 CRUD ─────────────────────────────────────────────────────────────
+  /** 重新拉取大纲（AI 生成/清除后调用） */
+  const reloadOutline = useCallback(() => {
+    psApi
+      .getOutline(docPath)
+      .then((r) => {
+        setOutline(r.outline)
+        setOutlineMeta(r.outlineMeta ?? null)
+      })
+      .catch(() => undefined)
+  }, [docPath])
   const addAnnotation = useCallback(
     (ann: Annotation) => {
       setAnnotations((a) => [...a, ann])
@@ -232,6 +272,8 @@ function useStoreImpl(docPath: string) {
     annotations,
     cards,
     outline,
+    outlineMeta,
+    reloadOutline,
     pageCount,
     setPageCount,
     pageDims,

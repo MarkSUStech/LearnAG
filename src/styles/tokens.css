@@ -17,7 +17,7 @@
   --radius: 10px;
   --sidebar-w: 248px;
 }
-html[data-theme='dark'] {
+html[data-theme='dark'], [data-noteui-theme='dark'] {
   --bg: #101216;
   --panel: #171a20;
   --panel-2: #1e222a;
@@ -33,6 +33,13 @@ html[data-theme='dark'] {
   --danger: #f87171;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 }
+[data-noteui-theme='light'] {
+  color-scheme: light;
+  --bg: #f7f7f8; --panel: #ffffff; --panel-2: #f1f2f4; --border: #e4e6ea;
+  --text: #16181d; --text-2: #6b7280; --text-3: #9ca3af; --accent: #4f46e5;
+  --accent-weak: #eef0fe; --mastered: #10b981; --learning: #f59e0b; --danger: #dc2626;
+}
+[data-noteui-theme='dark'] { color-scheme: dark; }
 
 * {
   box-sizing: border-box;

@@ -1,0 +1,448 @@
+/* ── 教学模式：对话式引导学习（标签页内容，与主模式共用 tokens，Material Symbols 图标） ── */
+.teach {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  animation: msgIn 0.2s ease-out;
+}
+
+/* 头部 */
+.teach-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.teach-logo {
+  color: var(--accent);
+  font-size: 24px;
+}
+.teach-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+.teach-title-main {
+  font-weight: 700;
+  font-size: 14.5px;
+  line-height: 1.25;
+}
+.teach-title-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+.teach-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 消息列表 */
+.teach-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px 16px 12px;
+  scroll-behavior: smooth;
+}
+.teach-body::-webkit-scrollbar {
+  width: 6px;
+}
+.teach-msg {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  animation: msgIn 0.18s ease-out;
+  font-size: 13.5px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+.teach-msg.user {
+  align-self: center;
+  max-width: 780px;
+  background: var(--accent-weak);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 14px;
+  padding: 10px 16px;
+  white-space: pre-wrap;
+}
+/* 助手消息：头像 + 文档式排版（与答疑面板同款 rich-md 渲染） */
+.teach-msg.assistant {
+  align-self: center;
+  display: flex;
+  gap: 12px;
+}
+.teach-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #22d3ee));
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.teach-avatar .material-symbols-rounded {
+  font-size: 17px;
+}
+.teach-msg-body {
+  flex: 1;
+  min-width: 0;
+}
+.teach-msg-body .rich-md p {
+  margin: 0 0 8px;
+}
+.teach-msg-body .rich-md p:last-child {
+  margin-bottom: 0;
+}
+.teach-msg-body .rich-md ul,
+.teach-msg-body .rich-md ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.teach-msg-body .rich-md code {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.teach-msg-body .rich-md pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12.5px;
+}
+.teach-msg-body .rich-md img {
+  max-width: 100%;
+  max-height: 340px; /* 配图限高，不占满整屏（等比缩放） */
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin: 6px 0;
+}
+/* mermaid 图：等比缩到列宽内（带 viewBox 的 SVG 可安全缩放），超宽图横向滚动兜底不再裁切 */
+.teach-msg-body .rich-md .mermaid {
+  overflow-x: auto;
+}
+.teach-msg-body .rich-md .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.teach-msg-body .rich-md .mermaid,
+.teach-msg-body .rich-md .mermaid-diagram {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  margin: 8px 0;
+}
+.teach-status-text {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+/* 空状态 hero */
+.teach-hero {
+  margin: auto;
+  max-width: 640px;
+  text-align: center;
+  padding: 20px 0;
+  animation: msgIn 0.25s ease-out;
+}
+.teach-hero-icon {
+  font-size: 52px;
+  color: var(--accent);
+  display: block;
+  margin: 0 auto 10px;
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent));
+}
+.teach-hero h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.teach-hero p {
+  color: var(--text-2);
+  font-size: 13.5px;
+  margin: 0 0 22px;
+}
+.teach-starters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  text-align: left;
+}
+.teach-starter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
+}
+.teach-starter .material-symbols-rounded {
+  color: var(--accent);
+  font-size: 18px;
+  flex: none;
+}
+.teach-starter:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+@media (max-width: 640px) {
+  .teach-starters {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 输入区 */
+.teach-input-zone {
+  padding: 8px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.teach-running-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+.teach-running-pill .spin {
+  font-size: 13px;
+  color: var(--accent);
+  animation: spin 1.2s linear infinite;
+}
+.teach-input {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: 8px 8px 8px 18px;
+  box-shadow: var(--shadow);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.teach-input:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    var(--shadow),
+    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.teach-input textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.6;
+  max-height: 160px;
+  padding: 6px 0;
+}
+.teach-send {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    filter 0.12s ease,
+    background 0.15s ease;
+}
+.teach-send .material-symbols-rounded {
+  font-size: 20px;
+}
+.teach-send:disabled {
+  background: var(--panel-2);
+  color: var(--text-3);
+  cursor: default;
+}
+.teach-send:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+.teach-send:not(:disabled):active {
+  transform: scale(0.92);
+}
+.teach-send.stop {
+  background: var(--danger);
+}
+.teach-disclaimer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.teach-disclaimer .material-symbols-rounded {
+  color: var(--text-3);
+}
+
+/* ── 多模态：附件预览条 / 用户消息配图 / 拖拽态 ─────────────────────────── */
+.teach.drop::after {
+  content: '松开以添加附件';
+  position: absolute;
+  inset: 12px;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 5;
+}
+.teach {
+  position: relative;
+}
+.teach-attach {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+.teach-attach:hover {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+.teach-attach:active {
+  transform: scale(0.92);
+}
+.teach-attach .material-symbols-rounded {
+  font-size: 21px;
+}
+.teach-pending {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.teach-pending-item {
+  position: relative;
+}
+.teach-pending-item img {
+  height: 62px;
+  width: auto;
+  max-width: 110px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.teach-pending-item .rm {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.teach-pending-item .rm:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.teach-pending-file {
+  height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  max-width: 180px;
+}
+.teach-pending-file .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--accent);
+}
+.teach-pending-file span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teach-msg.user .teach-msg-imgs {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.teach-msg.user .teach-msg-imgs img {
+  max-width: min(100%, 240px);
+  max-height: 170px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  cursor: zoom-in;
+}

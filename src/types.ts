@@ -3,6 +3,8 @@ export interface TreeNode {
   path: string
   type: 'file' | 'folder'
   children?: TreeNode[]
+  /** 教学对话文件（frontmatter 含 type: teaching-chat），文件树用 school 图标 */
+  chat?: boolean
 }
 
 export interface GraphNode {
@@ -32,7 +34,12 @@ export interface GraphData {
   edges: GraphEdge[]
 }
 
-export type Tab = { kind: 'note'; path: string } | { kind: 'pdf'; path: string } | { kind: 'graph' } | { kind: 'refs' }
+export type Tab =
+  | { kind: 'note'; path: string }
+  | { kind: 'pdf'; path: string }
+  | { kind: 'teach'; path: string; sessionId: string }
+  | { kind: 'graph' }
+  | { kind: 'refs' }
 
 /** 写作 agent 的附带资料：可标重点/次要，并可限定章节/页码范围 */
 export interface WriterAttachment {
@@ -138,10 +145,16 @@ export interface SessionMeta {
   messageCount: number
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+  images?: string[]
+}
+
 export interface UploadedFilePayload {
   path: string
   name: string
   preview?: { content: string; truncated: boolean; totalChars: number }
 }
 
-export type AnswerValue = string | string[] | { skipped: true } | { files: UploadedFilePayload[] }
+export type AnswerValue = string | string[] | { skipped: true } | { value?: string; files: UploadedFilePayload[] }

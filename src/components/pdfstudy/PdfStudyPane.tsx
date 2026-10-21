@@ -1,6 +1,6 @@
 // PDF 学习器面板：顶栏 + 大纲 + 阅读器 + 卡片面板 + 选区工具条 + 卡片编辑器 + 本地提示
-// 在 learn-agent 中占满一个标签页；底部悬浮输入 dock 仍属于主界面（阅读时可随时与 agent 对话）。
-import { useEffect } from 'react'
+// 在 learn-agent 中占满一个标签页，AI 对话由右侧协作栏承载。
+import { useEffect, useRef } from 'react'
 import { StudyProvider, useStore } from './store'
 import PsToolbar from './PsToolbar'
 import OutlinePanel from './OutlinePanel'
@@ -16,6 +16,8 @@ export default function PdfStudyPane({
   onToggleTutor,
   files,
   onComposeNotes,
+  jumpHint,
+  onJumpApplied,
 }: {
   path: string
   dark: boolean
@@ -23,11 +25,14 @@ export default function PdfStudyPane({
   onToggleTutor?: () => void
   files?: string[]
   onComposeNotes?: (message: string, attachments: import('../../types').WriterAttachment[]) => void
+  /** 引用角标带页打开：{page, ts} 变化时跳到该页 */
+  jumpHint?: { page: number; ts: number }
+  onJumpApplied?: () => void
 }) {
   return (
-    <StudyProvider docPath={path}>
+    <StudyProvider key={path} docPath={path}>
       <div className="pdf-study" data-theme={dark ? 'dark' : 'light'}>
-        <Inner dark={dark} tutorOpen={tutorOpen} onToggleTutor={onToggleTutor} files={files} onComposeNotes={onComposeNotes} />
+        <Inner dark={dark} tutorOpen={tutorOpen} onToggleTutor={onToggleTutor} files={files} onComposeNotes={onComposeNotes} jumpHint={jumpHint} onJumpApplied={onJumpApplied} />
       </div>
     </StudyProvider>
   )
@@ -39,14 +44,31 @@ function Inner({
   onToggleTutor,
   files,
   onComposeNotes,
+  jumpHint,
+  onJumpApplied,
 }: {
   dark: boolean
   tutorOpen?: boolean
   onToggleTutor?: () => void
   files?: string[]
   onComposeNotes?: (message: string, attachments: import('../../types').WriterAttachment[]) => void
+  jumpHint?: { page: number; ts: number }
+  onJumpApplied?: () => void
 }) {
   const s = useStore()
+
+  // 引用角标带页打开：文档就绪后跳到目标页
+  const jumpTs = jumpHint?.ts ?? 0
+  const appliedJump = useRef(0)
+  useEffect(() => {
+    if (!jumpTs || !jumpHint || appliedJump.current === jumpTs || !s.pageCount) return
+    const page = Math.min(Math.max(1, jumpHint.page), s.pageCount)
+    if (s.pageDims.length < page) return
+    appliedJump.current = jumpTs
+    s.jumpTo(page)
+    onJumpApplied?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTs, s.pageDims.length, s.pageCount])
 
   // 快捷键：Esc 回选择工具；+/- 缩放
   useEffect(() => {
@@ -86,7 +108,7 @@ function Inner({
           </aside>
         )}
         <div className="ps-center">
-          <PdfViewer />
+          <PdfViewer explicitPage={jumpHint?.page} />
           {s.rightOpen && <CardPanel files={files ?? []} onComposeNotes={onComposeNotes ?? (() => undefined)} />}
           {!s.outlineOpen && (
             <button className="ps-outline-fab icon-btn" title="展开大纲" onClick={() => s.setOutlineOpen(true)}>

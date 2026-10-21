@@ -3,6 +3,7 @@ import RichText from './RichText'
 import { api } from '../api'
 import { TUTOR_ROLES, type TutorRole } from '../tutorRoles'
 import PromptDialog from './PromptDialog'
+import type { CiteInfo } from '../cite'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -15,12 +16,14 @@ interface Props {
   width: number
   onResizeStart: (e: React.MouseEvent) => void
   onClose: () => void
+  /** 点击回答里的引用角标时打开对应来源文件 */
+  onOpenSource?: (info: CiteInfo) => void
 }
 
 const ROLES: TutorRole[] = ['socratic', 'feynman', 'quick']
 
 /** 笔记答疑助手：右侧抽屉面板，会话绑定当前笔记 */
-export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, onClose }: Props) {
+export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, onClose, onOpenSource }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [role, setRole] = useState<TutorRole>('quick')
   const [input, setInput] = useState('')
@@ -143,7 +146,7 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
         </span>
         <button className="icon-btn" title="清空对话" onClick={() => setConfirmClear(true)}>
           <span className="material-symbols-rounded" style={{ fontSize: 16 }}>
-            mopup
+            delete_sweep
           </span>
         </button>
         <button className="icon-btn" title="关闭" onClick={onClose}>
@@ -195,7 +198,7 @@ export default function TutorPanel({ notePath, noteTitle, width, onResizeStart, 
             </div>
           ) : (
             <div key={i} className="tutor-msg assistant">
-              <RichText text={m.content} />
+              <RichText text={m.content} onOpenCite={onOpenSource} streaming={running && i === messages.length - 1} />
               {running && i === messages.length - 1 && <span className="stream-caret" />}
             </div>
           ),

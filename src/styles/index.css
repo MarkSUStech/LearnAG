@@ -7,9 +7,13 @@
 @import './sidebar.css';
 @import './editor.css';
 @import './tutor.css';
+@import './teach.css';
 @import './inputbar.css';
 @import './graph.css';
 @import './dialogs.css';
 @import './refs.css';
 @import './pdfstudy.css';
 @import './ide.css';
+@import './noteui-system.css';
+@import './noteui.css';
+@import './assistant.css';

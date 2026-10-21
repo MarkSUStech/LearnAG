@@ -5,7 +5,7 @@ import path from 'node:path'
 import { streamChat } from './runner.js'
 import { loadSettings } from '../settings.js'
 import { buildTutorPrompt, TUTOR_ROLES } from './tutorPrompts.js'
-import { executeTool } from './tools.js'
+import { TUTOR_TOOLS, executeScopedTool, imageAwareTools } from './toolProfiles.js'
 import * as vault from '../vault.js'
 import { graphSummary } from '../graph.js'
 import { loadDoc } from '../pdfstudy.js'
@@ -73,7 +73,7 @@ async function buildPdfContext(relPath, page) {
   let flat = []
   let pageCount = 1
   try {
-    const tree = await getOutlineTree(key, abs)
+    const tree = await getOutlineTree(key, abs, relPath)
     flat = flattenOutline(tree)
     const pdf = await getPdf(key, abs)
     pageCount = pdf.numPages
@@ -138,10 +138,13 @@ export async function runTutor({ emit, notePath, role, message, page }) {
       const callAcc = new Map()
 
       // 答疑引擎：follow 跟随主引擎；独立选 api/zcode（答疑要快，建议 api）
-    const te = loadSettings().tutorEngine || 'follow'
-    const engine = te === 'follow' ? undefined : te
-    for await (const { delta, finishReason } of streamChat({ messages, signal: controller.signal, engine })) {
+      const te = loadSettings().tutorEngine || 'follow'
+      const engine = te === 'follow' ? undefined : te
+      const turnTools = imageAwareTools(TUTOR_TOOLS, messages)
+      for await (const { delta, finishReason } of streamChat({ messages, signal: controller.signal, engine, tools: turnTools })) {
         if (finishReason) break
+        const reasoning = delta.reasoning_content ?? delta.reasoning
+        if (reasoning) assistant.reasoning_content = (assistant.reasoning_content || '') + reasoning
         if (delta.content) {
           assistant.content += delta.content
           // 纯文本流式（工具调用阶段内容为空，不会误推）
@@ -180,7 +183,7 @@ export async function runTutor({ emit, notePath, role, message, page }) {
             message: tc.name === 'write_note' ? '正在补充笔记…' : '查阅资料中…',
           })
           const args = safeParse(tc.args) ?? {}
-          const result = await executeTool(tc.name, args, {
+          const result = await executeScopedTool(turnTools, tc.name, args, {
             onWrite: (rel) => {
               emit({ type: 'tutor-delta', path: notePath, noteUpdated: rel })
             },

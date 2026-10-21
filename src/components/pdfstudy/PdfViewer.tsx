@@ -13,11 +13,9 @@ import { attachScrollSync } from './syncBus'
 import PageView from './PageView'
 import NoteTabRail from './NoteTabRail'
 import type { Annotation, Card, Quad } from './types'
+import { parsePdfPosition, readyPdfPosition, readLocal, writeLocal } from '../../workspaceState'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
-
-let currentPdf: PDFDocumentProxy | null = null
-let currentLoadToken = 0
 
 const clampScale = (v: number) => Math.min(4, Math.max(0.4, v))
 
@@ -30,7 +28,7 @@ interface ZoomAnchor {
   clientDY: number
 }
 
-export default function PdfViewer() {
+export default function PdfViewer({ explicitPage }: { explicitPage?: number } = {}) {
   const s = useStore()
   const { docPath, scale, pageDims, pageCount } = s
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -40,29 +38,36 @@ export default function PdfViewer() {
   const [viewportH, setViewportH] = useState(800)
   const [viewportW, setViewportW] = useState(1200)
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
+  const currentPdf = useRef<PDFDocumentProxy | null>(null)
+  const currentLoadToken = useRef(0)
+  const [savedPosition] = useState(() => parsePdfPosition(readLocal('la-pos:pdf:' + docPath,null)))
+  const resumeDone = useRef(false)
+  const persistPosition = useRef<(element: HTMLDivElement) => void>(() => {})
   const pendingAnchor = useRef<ZoomAnchor | null>(null)
   const lastJumpTs = useRef(0)
   const lastZoomTs = useRef(0)
 
   // ── 加载 PDF 文档 ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const myToken = ++currentLoadToken
+    const myToken = ++currentLoadToken.current
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null
     if (!docPath) {
       setPdf(null)
-      void currentPdf?.destroy().catch(() => undefined)
-      currentPdf = null
+      void currentPdf.current?.destroy().catch(() => undefined)
+      currentPdf.current = null
       return
     }
     async function load() {
       s.setPageDims([])
       try {
-        const doc = await pdfjsLib.getDocument({ url: `/api/raw?path=${encodeURIComponent(docPath)}` }).promise
-        if (myToken !== currentLoadToken) {
+        loadingTask = pdfjsLib.getDocument({ url: `/api/raw?path=${encodeURIComponent(docPath)}` })
+        const doc = await loadingTask.promise
+        if (myToken !== currentLoadToken.current) {
           void doc.destroy().catch(() => undefined)
           return
         }
-        void currentPdf?.destroy().catch(() => undefined)
-        currentPdf = doc
+        void currentPdf.current?.destroy().catch(() => undefined)
+        currentPdf.current = doc
         setPdf(doc)
         s.setPageCount(doc.numPages)
         // 分块并行预取页面尺寸：大文档（上千页）串行 await 会拖慢首屏；
@@ -70,7 +75,7 @@ export default function PdfViewer() {
         const dims: { w: number; h: number }[] = []
         const CHUNK = 32
         for (let i = 1; i <= doc.numPages; i += CHUNK) {
-          if (myToken !== currentLoadToken) return
+          if (myToken !== currentLoadToken.current) return
           const end = Math.min(i + CHUNK - 1, doc.numPages)
           const pages = await Promise.all(
             Array.from({ length: end - i + 1 }, (_, k) => doc.getPage(i + k)),
@@ -81,14 +86,19 @@ export default function PdfViewer() {
           }
           s.setPageDims([...dims])
         }
-        if (myToken !== currentLoadToken) return
+        if (myToken !== currentLoadToken.current) return
         s.setPageDims(dims)
       } catch (e) {
-        if (myToken !== currentLoadToken) return
+        if (myToken !== currentLoadToken.current) return
         s.toast('PDF 加载失败：' + String((e as Error).message || e), 'error')
       }
     }
     void load()
+    return () => {
+      currentLoadToken.current++
+      void loadingTask?.destroy().catch(() => undefined)
+      currentPdf.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docPath])
 
@@ -207,6 +217,54 @@ export default function PdfViewer() {
     updateCurrentPage(el)
   }, [updateCurrentPage])
 
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element || resumeDone.current || !pageDims.length || explicitPage || s.jumpTarget) return
+    if (!savedPosition) { resumeDone.current = true; return }
+    const position = readyPdfPosition(savedPosition,pageCount,pageDims.length)
+    if (!position) return
+    const y = Math.min(position.y,pageDims[position.page - 1].h)
+    element.scrollTop = Math.max(0,offsets[position.page - 1] + y * scale - element.clientHeight / 3)
+    resumeDone.current = true
+    setScrollTop(element.scrollTop)
+    updateCurrentPage(element)
+  }, [pageDims,pageCount,offsets,scale,savedPosition,explicitPage,s.jumpTarget,updateCurrentPage])
+
+  persistPosition.current = element => {
+    if (!resumeDone.current || !pageDims.length || !docPath) return
+    const point = docPointAt(0,element.clientHeight / 3)
+    if (point) writeLocal('la-pos:pdf:' + docPath,{page:point.page,y:Math.max(0,Math.round(point.yInPage))})
+  }
+
+  // ── 阅读位置记忆：滚动时节流记录「1/3 视口处的文档点」，重开时恢复到同一视角 ──
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    let last = 0
+    const save = (force = false) => {
+      const now = Date.now()
+      if (!force && now - last < 800) return
+      last = now
+      persistPosition.current(el)
+    }
+    const onScroll = () => save()
+    const flush = () => save(true)
+    const cancelResume = () => { if (!explicitPage) resumeDone.current = true }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', cancelResume, { passive: true })
+    el.addEventListener('touchstart', cancelResume, { passive: true })
+    window.addEventListener('pagehide',flush)
+    document.addEventListener('visibilitychange',flush)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', cancelResume)
+      el.removeEventListener('touchstart', cancelResume)
+      window.removeEventListener('pagehide',flush)
+      document.removeEventListener('visibilitychange',flush)
+      save(true) // 卸载即记录最终位置（绕过节流）
+    }
+  }, [docPath,explicitPage])
+
   const scrollToY = useCallback(
     (y: number) => {
       const el = scrollRef.current
@@ -219,17 +277,19 @@ export default function PdfViewer() {
         updateCurrentPage(el)
         return
       }
-      el.scrollTo({ top, behavior: 'smooth' })
+      el.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     },
     [updateCurrentPage],
   )
 
   // ── 跳转（ts 消费后不再重放，避免缩放时被旧目标拉回） ─────────────────────
   useEffect(() => {
-    const t = s.jumpTarget
-    if (!t || !pageDims.length) return
+    if (!s.jumpTarget || !pageDims.length) return
+    const t = { ...s.jumpTarget, page: Math.max(1,Math.min(s.jumpTarget.page,pageCount || s.jumpTarget.page)) }
+    if (!pageDims[t.page - 1]) return
     if (t.ts === lastJumpTs.current) return
     lastJumpTs.current = t.ts
+    resumeDone.current = true
     const offs = offsets
     if (t.annId) {
       const ann = s.annotations.find((a) => a.id === t.annId)

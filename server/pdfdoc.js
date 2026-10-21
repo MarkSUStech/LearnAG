@@ -90,11 +90,37 @@ export async function getPageData(key, absPath, pdf, pageNum) {
   return data
 }
 
-/** 书签大纲 → {title, page, yInPage, children} 树 */
-export async function getOutlineTree(key, absPath) {
+/** flat 大纲 [{title,page,level}] → 书签树同构（yInPage 未知置 null） */
+export function flatToTree(flat) {
+  const root = []
+  const stack = [] // { level, node }
+  for (const it of flat) {
+    const node = { title: String(it.title), page: it.page ?? null, yInPage: null, children: [] }
+    while (stack.length && stack[stack.length - 1].level >= (it.level ?? 1)) stack.pop()
+    if (!stack.length) root.push(node)
+    else stack[stack.length - 1].node.children.push(node)
+    stack.push({ level: it.level ?? 1, node })
+  }
+  return root
+}
+
+/** 书签大纲 → {title, page, yInPage, children} 树；无书签且传入 relPath 时回退到 AI 生成的大纲（存于 pdf-study sidecar） */
+export async function getOutlineTree(key, absPath, relPath = '') {
   const pdf = await getPdf(key, absPath)
   const raw = await pdf.getOutline()
-  if (!raw?.length) return []
+  if (!raw?.length) {
+    if (relPath) {
+      try {
+        // 延迟加载避免与 pdfstudy 的 keyFor 循环依赖
+        const { loadDoc } = await import('./pdfstudy.js')
+        const flat = loadDoc(relPath).outline
+        if (flat.length) return flatToTree(flat)
+      } catch {
+        /* ignore */
+      }
+    }
+    return []
+  }
 
   async function resolveDest(dest) {
     if (!dest) return null

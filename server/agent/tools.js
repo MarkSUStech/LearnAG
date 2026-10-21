@@ -12,6 +12,9 @@ import { keyFor, getOutlineTree, flattenOutline, chapterRange } from '../pdfdoc.
 
 import { searchImages, downloadImageToVault } from './imgsearch.js'
 import { extractPdfImages } from './pdfimages.js'
+import { isImagePath, validateImageAttachments } from './vision.js'
+import { findImages } from './imageLibrary.js'
+import { inspectImage, checkNoteImages } from './imageAssets.js'
 
 // ── 工具定义（OpenAI function calling 格式） ────────────────────────────────
 
@@ -183,7 +186,7 @@ export const toolDefs = [
         type: 'object',
         properties: {
           path: { type: 'string', description: 'vault 内的相对路径，如 知识图谱/递归.md' },
-          content: { type: 'string', description: '完整的 Markdown 文件内容（含 frontmatter）' },
+          content: { type: 'string', description: '完整Markdown（含frontmatter）。学习笔记中的对比/定义表、推导/步骤、自测题默认带对应NoteUI注释，遵守系统语法；保留已有源文。' },
         },
         required: ['path', 'content'],
       },
@@ -240,14 +243,15 @@ export const toolDefs = [
     function: {
       name: 'search_images',
       description:
-        '联网搜索真实图片并按图文语义相关度重排（本地 SigLIP 模型），返回图片列表（标题/原图链接/缩略图/来源页/授权/相关度）。' +
-        '适合为笔记配学术插图（结构图、示意图、实物图）。query 建议用英文（如 "feedforward neural network architecture diagram"），语义重排对英文更准。' +
-        '拿到结果后用 download_image 把选中的图存入知识库，再用 write_note 以 ![](相对路径) 引用。',
+        '找学习配图：默认auto优先本地文件名、笔记图注和PDF导出来源，无匹配再联网；source=local/web可指定。返回可用路径或网络候选、尺寸、来源。分数只表匹配，须read_image核对内容；网络图先download_image入库。失败返回具体warnings，不编造图片或授权。',
       parameters: {
         type: 'object',
         properties: {
           query: { type: 'string', description: '图片检索词。英文效果最佳；越具体越好（对象+类型，如 "Transformer attention mechanism diagram"）' },
           count: { type: 'number', description: '返回条数，默认 6，最多 10' },
+          source: { type: 'string', enum: ['auto', 'local', 'web'] },
+          providers: { type: 'array', maxItems: 7, items: { type: 'string', enum: ['wikimedia', 'openverse', 'europepmc', 'openstax', 'servier', 'bioicons', 'wellcome'] }, description: '可指定图库；默认按学科选2–4家，不每次全搜' },
+          folder: { type: 'string', description: '可选，本地检索目录前缀' },
         },
         required: ['query'],
       },
@@ -265,6 +269,9 @@ export const toolDefs = [
         properties: {
           url: { type: 'string', description: '图片直链（search_images 结果里的 image_url）' },
           path: { type: 'string', description: '保存路径（vault 内相对路径，如 assets/images/transformer.jpg）。默认自动命名' },
+          page_url: { type: 'string', description: '检索结果来源页，保留出处' },
+          title: { type: 'string' }, author: { type: 'string' }, license: { type: 'string', description: '仅填写实际取得的授权，未知留空' },
+          license_url: { type: 'string' }, provider: { type: 'string' }, caption: { type: 'string' }, rights_note: { type: 'string' },
         },
         required: ['url'],
       },
@@ -273,15 +280,24 @@ export const toolDefs = [
   {
     type: 'function',
     function: {
+      name: 'read_image',
+      description: '实际查看本地图片，返回可注入视觉模型的图像、尺寸、来源。自动转PNG并限制1536px；可用归一化crop裁切教材整页中的图，保留原图。一次按需读1–2张，不把检索标题当已看图。',
+      parameters: { type: 'object', properties: { path: { type: 'string', description: '知识库内图片路径' }, crop: { type: 'array', items: { type: 'number' }, minItems: 4, maxItems: 4, description: '可选 [x,y,width,height]，均在0–1内，相对原图尺寸' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'extract_pdf_images',
       description:
-        '提取一篇 PDF 里的全部内嵌图片（教材插图/图表/照片），解码为 PNG 存入 assets/pdf/<PDF名>/，返回清单（文件/页码/尺寸）。' +
-        '自动过滤小图标；重复提取直接返回已有结果。配合 download/search 之外的第二种配图来源：把教材原图直接搬进笔记。',
+        '提取 PDF 内嵌位图；矢量插图需指定 pages 并用 mode=page 导出相关整页（最多12页）。mode=auto 在指定页无位图时回退整页；不指定页只扫描内嵌位图。返回 PNG 路径、页码、尺寸、kind 和具体状态；0 张不等于接口故障，禁止引用空路径。重复请求复用缓存。',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'PDF 在 vault 内的相对路径（如 资料/xx/lecturenote1.pdf）' },
           min_size: { type: 'number', description: '图片最小边长（像素），默认 200，过滤小图标' },
+          pages: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 12, description: 'PDF 实际页码（从1开始，非印刷页码），仅处理这些页；整页导出必须指定' },
+          mode: { type: 'string', enum: ['auto', 'embedded', 'page'], description: '默认auto；embedded只提取内嵌位图；page导出含文字的整页，保留矢量图和图注' },
           force: { type: 'boolean', description: '已提取过时是否强制重新提取' },
         },
         required: ['path'],
@@ -299,7 +315,7 @@ export const toolDefs = [
         'content（内容写作：按任务撰写或修改笔记）、' +
         'visualize（可视化：为笔记配真实图片或图表——PDF 提图/联网搜图/mermaid）、' +
         'scaffold（脚手架：把内容产出按用户容易理解的方式重排序与改写，并沉淀知识网络）。' +
-        '委派前把任务描述写具体：目标、输入素材、输出路径、要点与判定标准。内容类笔记的典型流水线：research → content → visualize（配图）→ scaffold（面向用户重排润色与沉淀）。',
+        '写清目标、必要素材路径、输出路径、判定标准。按需选择单个角色，不固定串联研究/写作/配图/润色；结果只需来源、路径、摘要及未完成项，不重复笔记全文。',
       parameters: {
         type: 'object',
         properties: {
@@ -331,12 +347,16 @@ export async function executeTool(name, args, hooks = {}) {
       }
       case 'read_note': {
         const rel = String(args.path || '')
+        if (isImagePath(rel)) {
+          validateImageAttachments([rel])
+          return JSON.stringify({ path: rel, image: true, hint: '图像将随工具结果附加到下一次模型请求；直接分析图片，不要把图片字节当文本或声称未提供图片。' })
+        }
         if (/\.pdf$/i.test(rel)) {
           // 章节模式：书签解析页码范围 → StudyContext（行号原文 + 用户标注/卡片）
           if (args.chapter && String(args.chapter).trim()) {
             const { totalPages } = await extractPdfPages(rel)
             const abs = vault.resolveInVault(rel)
-            const tree = await getOutlineTree(keyFor(rel), abs)
+            const tree = await getOutlineTree(keyFor(rel), abs, rel)
             if (!tree.length) {
               return JSON.stringify({ error: '该 PDF 没有书签大纲，无法按章节读取；请改用 page 参数按页读取', totalPages })
             }
@@ -432,6 +452,7 @@ export async function executeTool(name, args, hooks = {}) {
           path: rel,
           bytes: Buffer.byteLength(content, 'utf8'),
           graphSynced,
+          imageWarnings: checkNoteImages(content, rel),
           ...(graphSynced
             ? {
                 notice:
@@ -448,28 +469,15 @@ export async function executeTool(name, args, hooks = {}) {
         return JSON.stringify({ ok: true })
       }
       case 'search_images': {
-        const r = await searchImages(String(args.query ?? ''), Math.min(10, Number(args.count) || 6))
-        return JSON.stringify(
-          r.length
-            ? {
-                results: r,
-                hint: '选择相关度高（score 大）且授权合适的图：download_image 存入 assets/images/ 后，在笔记中用 ![](assets/images/文件名) 引用；学术引用建议注明来源页与作者/授权。',
-              }
-            : { results: [], note: '没有找到候选图。建议换更通用的英文关键词重试（如把中文概念翻译成英文术语）。' },
-        )
+        return JSON.stringify(await findImages(args))
       }
+      case 'read_image': return JSON.stringify(await inspectImage(args))
       case 'download_image': {
-        const r = await downloadImageToVault({ url: String(args.url ?? ''), path: args.path ? String(args.path) : undefined })
-        return JSON.stringify({ ok: true, path: r.path, bytes: r.bytes, hint: '在笔记中用 ![](' + r.path + ') 引用' })
+        const r = await downloadImageToVault(args)
+        return JSON.stringify({ ok: true, ...r })
       }
       case 'extract_pdf_images': {
-        const r = await extractPdfImages({ path: String(args.path ?? ''), min_size: args.min_size, force: Boolean(args.force) })
-        return JSON.stringify({
-          ...r,
-          hint:
-            '在笔记中用 ![](' + (r.images[0]?.file ?? '') + ') 引用；引用时建议注明来源 PDF 与页码。' +
-            (r.count === 0 ? '本 PDF 没有提取到符合条件的图片（可能是纯文本/矢量绘制），可尝试降低 min_size。' : ''),
-        })
+        return JSON.stringify(await extractPdfImages({ path: String(args.path ?? ''), min_size: args.min_size, force: Boolean(args.force), pages: args.pages, mode: args.mode }))
       }
       case 'delegate': {
         if (typeof hooks.delegate !== 'function') {

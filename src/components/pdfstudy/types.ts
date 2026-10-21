@@ -83,6 +83,15 @@ export interface OutlineNode {
   children: OutlineNode[]
 }
 
+/** AI 生成大纲的元信息 */
+export interface OutlineMeta {
+  source: string
+  pages: number[]
+  offset: number
+  count: number
+  generatedAt: string
+}
+
 export interface DocData {
   annotations: Annotation[]
   cards: Card[]

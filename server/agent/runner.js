@@ -3,21 +3,25 @@ import path from 'node:path'
 import { loadSettings } from '../settings.js'
 import * as vault from '../vault.js'
 import { graphSummary } from '../graph.js'
-import { buildManagerSystem, buildRouterMessages, buildDirectMessages, AGENT_WORKBENCH, MEMORY_NOTE, PLAN_NOTE } from './prompt.js'
+import { buildManagerSystem, selectRoute, buildDirectMessages, AGENT_WORKBENCH, MEMORY_NOTE } from './prompt.js'
+import { prepareRequestMessages, applyCompaction } from './context.js'
+import { MANAGER_TOOLS, executeScopedTool, imageAwareTools } from './toolProfiles.js'
+import { NOTEUI_PROMPT } from './noteuiPrompt.js'
+import { IMAGE_RULES } from './imagePrompt.js'
 import { toolDefs, executeTool } from './tools.js'
 import { netErrInfo, isTransientNetErr, withRetry, sleep } from './netutil.js'
 import * as sessions from './sessions.js'
+import { projectConversation } from './conversation.js'
 import { runSubAgent, subAgentLabel } from './subagent.js'
 import { SUB_AGENTS } from './roles.js'
 import { zcodeAvailable, zcodeChatOnce, zcodeStreamText, runZcodeTurn, getZcodeSessionId, setZcodeSessionId, ensureZcodeMcp } from './zcode.js'
 import { goalContextBlock } from '../goals.js'
+import { attachmentPath, imagePaths, isImagePath, MAX_IMAGES, prepareVisionMessages, recentImagePaths } from './vision.js'
 
 const MAX_TOOL_ROUNDS = 30
 const COMPACTION_THRESHOLD = 60 // 消息数超过该值触发压缩
 const COMPACTION_KEEP = 24 // 压缩时保留最近的消息数
 const MODES = ['教学', '探索', '目标', '写作']
-// 管理 Agent 的工具集：规划/委派/知识网络/向用户提问——不亲自写内容与上网检索
-const MANAGER_TOOLS = ['delegate', 'ask_user', 'read_graph', 'update_graph', 'read_note', 'list_notes', 'search_knowledge']
 
 // ── 提问挂起（ask_user） ────────────────────────────────────────────────────
 
@@ -52,6 +56,11 @@ export function listSessionsApi() {
   return sessions.listSessions()
 }
 
+export function sessionConversation(id) {
+  if (!sessions.listSessions().some(session => session.id === id)) return null
+  return projectConversation(sessions.loadSession(id).messages)
+}
+
 export function getActiveSession() {
   const id = sessions.ensureActive()
   const meta = sessions.listSessions().find((s) => s.id === id)
@@ -78,16 +87,6 @@ export function deleteSessionApi(id) {
 
 export function renameSessionApi(id, title) {
   return sessions.renameSession(id, title)
-}
-
-/** 持久化瘦身：较早轮次的工具结果截断为前 200 字 */
-function slimHistory(messages, oldCount) {
-  return messages.map((m, i) => {
-    if (i < oldCount && m.role === 'tool' && typeof m.content === 'string' && m.content.length > 220) {
-      return { ...m, content: m.content.slice(0, 200) + '…[已截断]' }
-    }
-    return m
-  })
 }
 
 /**
@@ -133,14 +132,6 @@ function sanitizeHistory(messages) {
 function readMemoryNote() {
   try {
     return vault.readFile(MEMORY_NOTE).slice(0, 2000)
-  } catch {
-    return ''
-  }
-}
-
-function readPlanNote() {
-  try {
-    return vault.readFile(PLAN_NOTE).slice(0, 1500)
   } catch {
     return ''
   }
@@ -244,7 +235,21 @@ function usingZcode() {
 function messagesToPrompt(messages) {
   const roleTag = { system: '背景与要求', user: '任务', assistant: '你此前的回复' }
   const body = messages
-    .map((m) => `【${roleTag[m.role] || m.role}】\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')}`)
+    .map((m) => {
+      let text
+      if (typeof m.content === 'string') text = m.content
+      else if (Array.isArray(m.content)) {
+        // 多模态消息：只保留文本 part，图片绝不以 base64 进入提示词
+        text = m.content
+          .filter((c) => c && c.type === 'text')
+          .map((c) => c.text)
+          .join('\n')
+        const nImgs = m.content.filter((c) => c && c.type === 'image_url').length
+        if (nImgs) text += `\n[本条消息含 ${nImgs} 张图片（纯文本通道无法展示）]`
+      } else text = JSON.stringify(m.content ?? '')
+      if (m.images?.length) text += `\n[用户附图（vault相对路径，可Read查看）：${m.images.join('、')}]`
+      return `【${roleTag[m.role] || m.role}】\n${text}`
+    })
     .join('\n\n')
   return body + '\n\n【输出要求】直接以文本回答（markdown），不要调用任何工具，不要读写任何文件。'
 }
@@ -258,6 +263,7 @@ export async function* streamChat({ messages, signal, tools = toolDefs, engine: 
     return
   }
   const { base, apiKey, model } = apiConfig()
+  const modelMessages = prepareVisionMessages(messages)
   let received = false // 是否已向调用方流出内容：流出后不能静默重试（会重复输出）
   for (let attempt = 1; ; attempt++) {
     try {
@@ -270,7 +276,7 @@ export async function* streamChat({ messages, signal, tools = toolDefs, engine: 
         },
         body: JSON.stringify({
           model,
-          messages,
+          messages: modelMessages,
           tools: (tools ?? []).filter(Boolean), // 防御：稀疏数组空洞会被序列化成 null，严格网关直接 400
           stream: true,
           temperature: 0.7,
@@ -283,7 +289,9 @@ export async function* streamChat({ messages, signal, tools = toolDefs, engine: 
         } catch {
           /* ignore */
         }
-        const err = new Error(`AI 服务返回 ${res.status}：${detail}`)
+        const visionHint = [400, 415, 422].includes(res.status) && /image|vision|multimodal/i.test(detail)
+          ? '当前模型可能不支持图片，请在设置中选择支持视觉的模型。' : ''
+        const err = new Error(`${visionHint}AI 服务返回 ${res.status}：${detail}`)
         if (attempt < 3 && (res.status === 429 || res.status >= 500)) {
           console.warn(`[net] 模型服务 ${res.status}，${800 * attempt}ms 后重试（第 ${attempt + 1} 次）`)
           await sleep(800 * attempt)
@@ -338,7 +346,7 @@ export async function* streamChat({ messages, signal, tools = toolDefs, engine: 
 /** 非流式单次调用（历史压缩、mermaid 修复等辅助任务） */
 export async function chatOnce(messages, opts = {}) {
   // ZCode 引擎：单轮无头问答（无工具、纯文本回复）
-  if (engineOpt ? engineOpt === 'zcode' && zcodeAvailable() : usingZcode()) {
+  if (usingZcode()) {
     return zcodeChatOnce(messagesToPrompt(messages))
   }
   const { base, apiKey, model } = apiConfig()
@@ -397,9 +405,8 @@ async function compactIfNeeded(messages, summary, emit) {
           `【输出】合并后的长期记忆要点（500 字以内）：`,
       },
     ])
-    const merged = ((summary ? summary + '\n' : '') + text).slice(-4000)
     console.log(`[agent] 已压缩 ${oldPart.length} 条历史为长期记忆`)
-    return { messages: keep, summary: merged }
+    return applyCompaction(messages, summary, keep, text)
   } catch (e) {
     console.error('[agent] 压缩失败，保留原历史', e.message)
     return { messages, summary }
@@ -494,6 +501,8 @@ function summarizeToolInput(name, args = {}) {
       return 'RAG: ' + pick('query')
     case 'search_images':
       return '搜图: ' + pick('query')
+    case 'read_image':
+      return '查看图: ' + pick('path')
     case 'download_image':
       return '下载图 → ' + pick('path')
     case 'download_paper':
@@ -598,7 +607,7 @@ function formatAnswer(answer) {
   if (answer.cancelled) return '（用户停止了本次任务）'
   if (answer.skipped) return '（用户跳过了这个问题）'
   if (Array.isArray(answer.value)) return answer.value.join('；')
-  if (Array.isArray(answer.files)) return '上传了文件：' + answer.files.map((f) => f.path).join('、')
+  if (Array.isArray(answer.files)) return [String(answer.value || ''), '上传了文件：' + answer.files.map((f) => f.path).join('、')].filter(Boolean).join('\n')
   return String(answer.value ?? '')
 }
 
@@ -609,6 +618,8 @@ function buildAttachBlock(attachments) {
     '\n【附带资料】（[重点]=笔记核心依据；[次要]=补充对照）\n' +
     attachments
       .map((a) => {
+        const path = attachmentPath(a)
+        if (isImagePath(path)) return `- [用户图片] ${path}（API中随消息提供图片；ZCode请Read图片后分析，不能按文本笔记读取）`
         const role = a.primary === false ? '[次要]' : '[重点]'
         const sc = a.scope || {}
         const parts = []
@@ -617,11 +628,15 @@ function buildAttachBlock(attachments) {
         const scopeText = parts.length
           ? '建议范围：' + parts.join('，')
           : '建议范围：未指定（先定位相关章节/页码，禁止全文读入）'
-        return `- ${role} ${a.path} ｜ ${scopeText}`
+        return `- ${role} ${path} ｜ ${scopeText}`
       })
       .join('\n') +
     '\n'
   )
+}
+
+function imageTranscript(userMessage, images) {
+  return `**用户附图**：${userMessage}\n\n${images.map(rel => `![用户图片](<${rel}>)`).join('\n\n')}`
 }
 
 // ── ZCode 引擎：主智能体（本机 ZCode CLI 全权执行） ─────────────────────────
@@ -645,15 +660,18 @@ function buildZcodePrompt({ userMessage, mode, attachments, goalBlock = '' }) {
 - Agent/记忆.md、Agent/目标与计划.md ：若存在先读——里面是用户的长期记忆、目标与计划进度，主动衔接，不要让用户重复说过的话
 
 ## 工作纪律
-- 笔记要详实完整：概念、推导、例子、易错点、自测题都应覆盖，宁可长而透，不要薄而空。图用 mermaid，语法不要混用（例如 Note over 只能出现在 sequenceDiagram 中）
+- 按任务范围写足必要概念、推导、例子、易错点和自测，不为凑模板重复内容；结构默认用NoteUI，复杂图用mermaid，语法不要混用
 - 需要向用户提问（摸底测评、出题检查掌握程度、候选路径选择）时，用 ask_user 工具：用户会在界面上看到提问卡片并作答，工具结果就是用户的回答（answer.value；被跳过/取消也要得体处理）。每次只问一个问题；题目涉及用户看不到的内容时放进 code 参数
 - 出题测评纪律：一道一问，跨层级搭配（概念判断 judge → 识记 single → 理解/应用 text）；「不会就是不会」——答错或答「不会」只简短确认并记录薄弱点，立即下一题，测评环节不讲解；所有题型用户都可能自定义回答，按内容严肃判定，空洞/抄题面视为未通过
-- 动笔/回答前**必须先调用 search_knowledge** 语义检索用户知识库（覆盖全部笔记、PDF 原文、用户在 PDF 里的标注与卡片——这些深层内容 Grep/Glob 搜不到）；检索命中后只用 Read 读取它给出的具体文件，不要用 Grep/Glob 大范围翻找笔记正文
-- 复杂学习任务按多 Agent 协作推进：你是管理者，通过 delegate 工具把专项工作委派给专职子 Agent（research 研究/resource 资源/content 内容写作/visualize 可视化配图/scaffold 组装沉淀），委派时把目标、素材路径、输出路径写清楚；简单步骤你可以直接自己做，不必事事委派
+- 需要知识库资料且当前上下文不足时调用 search_knowledge（覆盖笔记、PDF、标注与卡片）；命中后按路径精读，不重复检索已有资料或大范围翻找正文。修改已有文件前必须读完整原文
+- 复杂任务按需 delegate（research研究/resource资源/content写作/visualize配图/scaffold整理）；写清目标、必要素材路径、输出路径。常规任务直接完成，不固定串联角色，不复制笔记全文或整段对话作为委派上下文
 - 需要真实图片配图（教材插图/照片/实物图）时有两条通道：**extract_pdf_images** 从用户知识库的 PDF 里提取教材原图（最优先，学术引用最佳，注明来源 PDF 与页码）；**search_images** 联网搜图（英文关键词）+ **download_image** 下载到 assets/images/ 后用 ![](路径) 引用。示意图/流程/关系类内容仍然用 mermaid 自己画，不要搜图
 - 新学的知识点要沉淀进知识网络：写 知识图谱/<知识点>.md（带规范 frontmatter），并直接编辑 知识图谱.json 补节点与边；从已掌握节点向外推演一层（新节点 status=learnable、mastery=0）
 - 不要修改 .obsidian、.agent 与 Agent/工作台.md（工作台由系统写入）
 - 只操作上述 vault 内的文件，不要动用户电脑上的其他东西
+
+${NOTEUI_PROMPT}
+${IMAGE_RULES}
 
 ## 当前目标（用户本轮选定，优先服务它）
 ${goalBlock}
@@ -690,6 +708,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
   const settings = loadSettings()
   const sessionId = sessions.ensureActive()
 
+  emit({ type: 'agent-reply', sessionId, text: '', replace: true })
   const ZCODE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
   const state = { reply: '', lastStreamEmit: 0, lastThinkEmit: 0, pendingFiles: new Map() }
@@ -705,6 +724,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
     }
     if (e.type === 'text-delta') {
       state.reply += e.text
+      emit({ type: 'agent-reply', sessionId, text: e.text })
       const now = Date.now()
       if (now - state.lastStreamEmit > 300) {
         state.lastStreamEmit = now
@@ -746,6 +766,7 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
     }
     if (e.type === 'turn-end' && e.response && e.response.trim()) {
       state.reply = e.response // 以回合完整回复为准（覆盖增量累积）
+      emit({ type: 'agent-reply', sessionId, text: state.reply, replace: true })
       emit({ type: 'agent-write', path: AGENT_WORKBENCH, content: state.reply, done: false })
     }
   }
@@ -769,6 +790,8 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
     if (r.sessionId) setZcodeSessionId(sessionId, r.sessionId)
 
     const finalText = (r.response || '').trim() || state.reply.trim()
+    const images = imagePaths(attachments)
+    if (images.length) appendWorkbench(imageTranscript(userMessage, images))
     if (finalText) {
       appendWorkbench(finalText)
       let full = ''
@@ -790,7 +813,8 @@ export async function runZcodeAgent({ emit, userMessage, mode, attachments = [],
       const cjk = (cleaned.match(/[\u4E00-\u9FFF]/g) || []).length
       title = weird >= 2 || (!cjk && /\u00C0-\u01FF/.test(cleaned) && cleaned.length > 0) ? undefined : cleaned.slice(0, 20) || undefined
     }
-    sessions.saveSession(sessionId, hist, summary, title)
+    const history = [...hist, { role: 'user', content: userMessage + buildAttachBlock(attachments), ...(images.length ? { images } : {}) }, ...(finalText ? [{ role: 'assistant', content: finalText }] : [])]
+    sessions.saveSession(sessionId, history, summary, title)
     emit({ type: 'agent-done' })
   } finally {
     currentRun = null
@@ -818,30 +842,25 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
 
   const sessionId = sessions.ensureActive()
   const loaded = sessions.loadSession(sessionId)
+  emit({ type: 'agent-reply', sessionId, text: '', replace: true })
   const history = sanitizeHistory(loaded.messages) // 修复旧版本压缩切坏的残缺组
   const summary = loaded.summary
 
   const attachBlock = buildAttachBlock(attachments)
+  const images = imagePaths(attachments)
+  if (images.length > MAX_IMAGES) { currentRun = null; throw new Error('每次最多发送4张图片') }
   const userEntry = {
     role: 'user',
     content: `【模式：${MODES.includes(mode) ? mode : '教学'}】${userMessage}${attachBlock}`,
+    ...(images.length ? { images } : {}),
   }
-  // ── 路由 Agent：快问直答，学习任务交管理 Agent ──
+  // Deterministic social fast path; the main model decides tool use without a classifier request.
   const safeMode = MODES.includes(mode) ? mode : '教学'
-  emit({ type: 'agent-status', stage: 'thinking', message: '路由中…' })
-  let route = 'manage'
-  try {
-    const txt = await chatOnce(buildRouterMessages(userMessage, safeMode), { temperature: 0, maxTokens: 60 })
-    // 模型可能输出转义包裹的 JSON，直接关键词匹配最稳
-    if (/direct/.test(txt)) route = 'direct'
-    else if (/manage/.test(txt)) route = 'manage'
-  } catch {
-    /* 路由失败默认 manage */
-  }
+  const route = selectRoute(userMessage, { attachments, goalId, mode: safeMode })
 
   let messages
   if (route === 'direct') {
-    messages = buildDirectMessages(userMessage, safeMode)
+    messages = buildDirectMessages(userMessage, safeMode, history, summary)
   } else {
     messages = [
       {
@@ -850,7 +869,6 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
           vaultPath: vault.getVaultRoot(),
           graphSummary: graphSummary(),
           memoryNote: readMemoryNote(),
-          planNote: readPlanNote(),
           sessionSummary: summary,
           turnCount: history.filter((m) => m.role === 'user').length + 1,
           mode: safeMode,
@@ -870,11 +888,12 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
     if (route === 'direct') {
       // 快问直答：无工具流式回答，结尾由工作台兜底落档
       emit({ type: 'agent-status', stage: 'thinking', message: '快速回答…' })
-      for await (const { delta } of streamChat({ messages, signal: abort.signal, tools: [] })) {
-        if (delta.content) finalText += delta.content
+      for await (const { delta } of streamChat({ messages: prepareRequestMessages(messages), signal: abort.signal, tools: [] })) {
+        if (delta.content) { finalText += delta.content; emit({ type: 'agent-reply', sessionId, text: delta.content }) }
       }
     } else {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      emit({ type: 'agent-reply', sessionId, text: '', replace: true })
       emit({ type: 'agent-status', stage: 'thinking', message: '管理 Agent 规划与委派中…' })
       const assistant = { role: 'assistant', content: '', tool_calls: [] }
       const callAcc = new Map() // index -> {id, name, args}
@@ -885,12 +904,14 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
 
       // 空回合重试：免费模型偶尔返回空流（只有 reasoning 或被截断）
       let emptyRetries = 0
+      const turnTools = imageAwareTools(MANAGER_TOOLS, messages)
       while (true) {
         emit({ type: 'agent-status', stage: 'thinking', message: '正在思考与生成…' })
-        for await (const { delta, finishReason: fr } of streamChat({ messages, signal: abort.signal })) {
+        for await (const { delta, finishReason: fr } of streamChat({ messages: prepareRequestMessages(messages), signal: abort.signal, tools: turnTools })) {
           finishReason = fr
           if (delta.content) {
             assistant.content += delta.content
+            emit({ type: 'agent-reply', sessionId, text: delta.content })
           }
           // 思考模式（DeepSeek 等）：reasoning_content 必须累积并在下一轮回传，
           // 否则带 tool_calls 的 assistant 消息回传时服务端返回 400
@@ -952,6 +973,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
         .map(([, v]) => ({ id: v.id, name: v.name, args: v.args }))
 
       if (toolCalls.length > 0) {
+        emit({ type: 'agent-reply', sessionId, text: '', replace: true })
         assistant.tool_calls = toolCalls.map((t) => ({
           id: t.id,
           type: 'function',
@@ -965,6 +987,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
         // 思考模式要求把上轮 reasoning_content 原样回传
         if (assistant.reasoning_content) assistantEntry.reasoning_content = assistant.reasoning_content
         messages.push(assistantEntry)
+        const answerImages = []
         for (const tc of toolCalls) {
           emit({
             type: 'agent-status',
@@ -989,6 +1012,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
               if (answer && Array.isArray(answer.files)) {
                 for (const f of answer.files) {
                   runUploads.push({ path: f.path, name: f.name, content: f.preview?.content ?? '' })
+                  if (isImagePath(f.path)) answerImages.push(f.path)
                 }
               }
               messages.push({
@@ -1007,7 +1031,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
             }
           }
 
-          const result = await executeTool(tc.name, args, {
+          const result = await executeScopedTool(turnTools, tc.name, args, {
             onWrite: (rel, content) => {
               currentRun?.writeActivity?.set(rel, Date.now())
               wroteAny = true
@@ -1020,6 +1044,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
                 role: p.role,
                 task: p.task,
                 context: p.context || '',
+                images: recentImagePaths(messages),
                 emit,
                 signal: abort.signal,
                 streamChat,
@@ -1039,6 +1064,7 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
           })
           messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
         }
+        if (answerImages.length) messages.push({ role: 'user', content: '这是本次回答附带的图片，请结合上面的回答一起判断。', images: answerImages.slice(0, MAX_IMAGES) })
         continue // 继续下一轮，让模型看到工具结果
       }
 
@@ -1048,15 +1074,18 @@ export async function runAgent({ emit, userMessage, mode, attachments = [], goal
     }
 
     }
+    if (images.length) appendWorkbench(imageTranscript(userMessage, images))
     // 兜底：模型输出了纯文字但没写任何文件 → 自动落到工作台
     if (!wroteAny && finalText && finalText.trim()) {
       appendWorkbench(finalText.trim())
       emit({ type: 'agent-write', path: AGENT_WORKBENCH, done: true })
     }
 
-    // 持久化：当前会话（旧轮次工具结果瘦身）
+    // Persist the final reply as well as tool groups (including social fast-path history).
+    if (finalText.trim()) messages.push({ role: 'assistant', content: finalText })
+    // Mask old observations only in requests, never destructively truncate stored messages.
     const newMessages = messages.filter((m) => m.role !== 'system')
-    let toSave = slimHistory(newMessages, history.length)
+    let toSave = newMessages
     let title
     const firstUser = toSave.find((m) => m.role === 'user')
     const meta = sessions.listSessions().find((s) => s.id === sessionId)

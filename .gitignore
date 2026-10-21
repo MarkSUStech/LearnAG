@@ -17,3 +17,10 @@ Thumbs.db
 
 # 演示库运行时数据（会话/缓存/历史）
 server/demo-vault/.agent/
+
+# 本机调试、用户笔记备份与验收材料
+.backup-*/
+.svc-start.cmd
+/.impeccable/*
+!/.impeccable/design.json
+!/.impeccable/surfaces/

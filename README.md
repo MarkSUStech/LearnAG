@@ -6,6 +6,8 @@
 
 ## 核心特性
 
+- **NoteUI 智能可视化**：Markdown 注释驱动 20 类学习组件，包括图表、知识树、概念词典、闪卡、填空、配对、多选题、公式推导、代码导读、清单、日程与自评等；支持阅读/源码切换，普通 Markdown 保持兼容。参见 [语法与集成说明](doc/noteui.md)、[基础示例](server/demo-vault/笔记/NoteUI/note/NoteUI交互示例.md) 和 [全场景学习示例](server/demo-vault/笔记/NoteUI/note/NoteUI学习全场景示例.md)。
+
 - **Markdown 编辑器**（Milkdown Crepe）：所见即所得，原生渲染 **LaTeX 公式**（KaTeX）与 **Mermaid 图表**，`[[wikilink]]` 点击跳转、frontmatter 徽章栏；可自定义字号/行宽/字体（设置 → 编辑器外观）
 - **三种 agent 模式**（底部输入框旁切换，无独立聊天区——所有回答都落成笔记）：
   - **教学**（默认）：摸底测评（一道一问、L1~L4 递进）→ 学情分析 → 定制计划 → 逐步讲解 → 阶段验收
@@ -98,11 +100,15 @@ learn-agent/
 
 ## 进阶模块
 
-- **PDF 学习器**：vault 内 PDF（资料/、reference/papers/、附件/）以学习器标签页打开——连续滚动阅读、荧光/下划线/波浪线/删除线标注、遮挡自测、页面贴图、四用途卡片笔记（Milkdown 编辑）、标签系统、书签大纲精确跳转；标注存 `vault/.agent/pdf-study/`，与 Obsidian 完全兼容（PDF 文件零修改）
+- **NoteUI 组件设计系统**：保留28类学习组件，增加9类布局与受控 SVG 示意图。组件元数据由前后端共享，AI 可组合 Markdown、图表、练习和图解；Gallery 使用 `?gallery=noteui`，正式笔记内也可打开组件库。见 [组件清单](doc/noteui-system-audit.md) 与 [设计规范和语法](doc/noteui-design-system.md)。
+
+- **全局对话图片**：底部输入栏所有模式支持选图、粘贴截图、拖入图片和纯图片发送。图片通过视觉消息传给当前模型，追问和子任务可继续读图；算法讲解默认使用合适的NoteUI组件。见 [使用说明](doc/global-images.md) 与 [真实截图生成的算法讲解](doc/noteui-algorithm-generated.md)。
+- **PDF 学习器**：vault 内 PDF（资料/、reference/papers/、附件/）以学习器标签页打开——连续滚动阅读、荧光/下划线/波浪线/删除线标注、遮挡自测、页面贴图、四用途卡片笔记（Milkdown 编辑）、标签系统、书签大纲精确跳转；**无书签的 PDF 可 AI 生成大纲**（大纲栏「AI 生成大纲」→ 填目录页码范围，LLM 解析目录并自动校准正文页码偏移，支撑章节跳转与答疑的按章节读取）；标注存 `vault/.agent/pdf-study/`，与 Obsidian 完全兼容（PDF 文件零修改）
 - **选区翻译 & AI 重写**：划选 PDF 文字一键翻译成卡片；mermaid 图渲染失败时自动/手动（AI 重写按钮）让 AI 只修坏掉的那一段代码块
 - **本地 RAG 检索**：transformers.js(ONNX) 本地 embedding（默认 jina-embeddings-v2-base-zh 中英双语，可在设置切换 bge-m3 等），纯文件向量库零原生依赖；索引覆盖全部笔记 + PDF 文本 + 学习器标注/卡片，主 agent 与笔记答疑助手共享 `search_knowledge` 工具
 - **写笔记 agent**：指定笔记 / PDF（含你的标注与卡片，支持按章节/页码限定范围）撰写笔记，未指定范围时经 RAG 自行定位，避免全文读入
 - **笔记答疑助手**：笔记/PDF 右上角论坛图标唤起右侧面板，苏格拉底 / 费曼 / 快讲三种角色针对当前内容答疑；PDF 按当前阅读章节注入上下文
+- **教学模式**（侧栏 `school` 按钮新建，或直接点开 vault 里任意对话文件）：对话式引导学习，内置 Gemini Guided Learning 同款建构主义导师提示词——先给关键背景再以提问引导，不直接给答案；与笔记一样占据标签栏（可拖拽/分屏）。每个对话就是 vault 里一个 md 文件：frontmatter `session` 关联会话，正文为系统自动维护的对话实录（首轮回复后自动按标题改名）；重命名/删除文件会同步会话。**多模态**：输入框可粘贴/拖入/附加图片（存 `附件/`，以 vision 格式发给模型，需模型支持视觉；ZCode 引擎降级为路径引用），文件存档并嵌入实录。每轮消息**自动 RAG 检索**知识库，可联网搜图/提取教材原图并在对话中展示（mermaid 与公式实时渲染）；要求整理笔记/找资料/配图时自动 `delegate` 给知识库专职子 Agent。接口：`POST /api/teacher`（含 `attachments`）、`POST /api/teacher/stop`、`GET|POST /api/teacher/sessions`、`POST /api/teacher/sessions/:id/activate`、`PUT|DELETE /api/teacher/sessions/:id`、`GET|DELETE /api/teacher/session?id=`、`GET /api/teacher/status`
 - **资料引用角标**：AI 生成内容中的 `[^n]` 脚注渲染为可悬停的来源卡片（来源标题/摘录/类型/分组），语法与 Obsidian 脚注兼容
 
 ## 目录结构（节选）

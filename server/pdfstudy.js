@@ -33,29 +33,74 @@ export function loadDoc(relPath) {
     return {
       annotations: Array.isArray(parsed.annotations) ? parsed.annotations : [],
       cards: Array.isArray(parsed.cards) ? parsed.cards : [],
+      outline: Array.isArray(parsed.outline) ? parsed.outline : [],
+      outlineMeta: parsed.outlineMeta ?? null,
     }
   } catch {
-    return { annotations: [], cards: [] }
+    return { annotations: [], cards: [], outline: [], outlineMeta: null }
   }
+}
+
+/** 写标注时保留文件里已存的 AI 大纲（payload 未携带时） */
+function mergeOutline(file, payload) {
+  if (payload.outline !== undefined) return payload
+  try {
+    const prev = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (Array.isArray(prev.outline)) {
+      payload.outline = prev.outline
+      payload.outlineMeta = prev.outlineMeta ?? null
+    }
+  } catch {
+    /* 无既有文件 */
+  }
+  return payload
 }
 
 /** 防抖保存（250ms，tmp+rename 原子写） */
 export function saveDoc(relPath, data) {
   const key = keyFor(relPath)
   const file = docFile(relPath)
-  const payload = { annotations: data.annotations ?? [], cards: data.cards ?? [] }
+  const payload = mergeOutline(file, { annotations: data.annotations ?? [], cards: data.cards ?? [] })
   const prev = saveTimers.get(key)
   if (prev) clearTimeout(prev)
   const timer = setTimeout(() => {
     saveTimers.delete(key)
     try {
-      writeDocNow(file, payload)
+      // 写入时再合并一次：防抖窗口内 AI 大纲可能已另行落盘
+      writeDocNow(file, mergeOutline(file, payload))
     } catch (e) {
       console.error('[pdf-study] 保存标注失败:', e.message)
     }
   }, 250)
   saveTimers.set(key, timer)
   return { ok: true }
+}
+
+/** 保存 AI 生成的大纲（flat: [{title,page,level}]，立即落盘；保留既有标注/卡片） */
+export function saveGeneratedOutline(relPath, flat, meta = null) {
+  const key = keyFor(relPath)
+  const file = docFile(relPath)
+  const prev = saveTimers.get(key)
+  if (prev) {
+    clearTimeout(prev)
+    saveTimers.delete(key)
+  }
+  let annotations = []
+  let cards = []
+  try {
+    const prevData = JSON.parse(fs.readFileSync(file, 'utf8'))
+    annotations = Array.isArray(prevData.annotations) ? prevData.annotations : []
+    cards = Array.isArray(prevData.cards) ? prevData.cards : []
+  } catch {
+    /* 无既有文件 */
+  }
+  writeDocNow(file, { annotations, cards, outline: flat, outlineMeta: meta })
+  return { ok: true }
+}
+
+/** 清除 AI 生成的大纲（保留标注/卡片） */
+export function clearGeneratedOutline(relPath) {
+  return saveGeneratedOutline(relPath, [], null)
 }
 
 /** 立即落盘（rename/删除前调用） */

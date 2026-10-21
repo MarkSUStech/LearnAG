@@ -157,8 +157,13 @@ export function showCitePopup(anchor: HTMLElement, num: number, info: CiteInfo) 
   pop.style.top = Math.max(8, y) + 'px'
 }
 
-/** 事件委托：root 内的引用角标悬停即弹出来源卡片；鼠标离开角标与卡片后自动消失；返回清理函数 */
-export function attachCiteHover(root: HTMLElement, resolve: (num: number) => CiteInfo | undefined): () => void {
+/** 事件委托：root 内的引用角标悬停即弹出来源卡片；鼠标离开角标与卡片后自动消失；
+ *  onOpen 提供时点击角标直接打开来源文件（返回清理函数） */
+export function attachCiteHover(
+  root: HTMLElement,
+  resolve: (num: number) => CiteInfo | undefined,
+  onOpen?: (num: number, info: CiteInfo) => void,
+): () => void {
   const badgeOf = (e: MouseEvent) =>
     (e.target as HTMLElement)?.closest?.(".cite-badge, sup[data-type='footnote_reference']") as HTMLElement | null
   const onOver = (e: MouseEvent) => {
@@ -174,10 +179,24 @@ export function attachCiteHover(root: HTMLElement, resolve: (num: number) => Cit
     if (!badgeOf(e)) return
     scheduleHide(350)
   }
+  const onClick = (e: MouseEvent) => {
+    if (!onOpen) return
+    const badge = badgeOf(e)
+    if (!badge) return
+    const num = parseInt(badge.dataset.ref ?? badge.dataset.label ?? '', 10)
+    const info = Number.isFinite(num) ? resolve(num) : undefined
+    if (!info) return
+    e.preventDefault()
+    e.stopPropagation()
+    hideCitePopup()
+    onOpen(num, info)
+  }
   root.addEventListener('mouseover', onOver)
   root.addEventListener('mouseout', onOut)
+  root.addEventListener('click', onClick)
   return () => {
     root.removeEventListener('mouseover', onOver)
     root.removeEventListener('mouseout', onOut)
+    root.removeEventListener('click', onClick)
   }
 }

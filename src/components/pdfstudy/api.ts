@@ -1,5 +1,5 @@
 // PDF 学习器 REST 封装（端点全部以 vault 相对路径定位）
-import type { Annotation, Card, DocData, OutlineNode } from './types'
+import type { Annotation, Card, DocData, OutlineMeta, OutlineNode } from './types'
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -17,14 +17,31 @@ async function json<T>(res: Response): Promise<T> {
 
 export const psApi = {
   getDoc: (path: string) => fetch(`/api/pdf-study/doc?path=${encodeURIComponent(path)}`).then((r) => json<DocData>(r)),
-  putDoc: (path: string, data: { annotations: Annotation[]; cards: Card[] }) =>
-    fetch(`/api/pdf-study/doc?path=${encodeURIComponent(path)}`, {
+  putDoc: (path: string, data: { annotations: Annotation[]; cards: Card[] }) => {
+    const body = JSON.stringify(data)
+    return fetch(`/api/pdf-study/doc?path=${encodeURIComponent(path)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }).then((r) => json<{ ok: boolean }>(r)),
+      body,
+      keepalive: new TextEncoder().encode(body).byteLength <= 60000,
+    }).then((r) => json<{ ok: boolean }>(r))
+  },
   getOutline: (path: string) =>
-    fetch(`/api/pdf-study/outline?path=${encodeURIComponent(path)}`).then((r) => json<{ outline: OutlineNode[] }>(r)),
+    fetch(`/api/pdf-study/outline?path=${encodeURIComponent(path)}`).then((r) =>
+      json<{ outline: OutlineNode[]; outlineMeta: OutlineMeta | null }>(r),
+    ),
+  /** AI 生成大纲：ranges = 目录所在页码范围（如 "3-5,8"） */
+  generateOutline: (path: string, ranges: string) =>
+    fetch('/api/pdf-study/outline/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, ranges }),
+    }).then((r) => json<{ ok: boolean; count: number; offset: number }>(r)),
+  /** 清除 AI 生成的大纲 */
+  clearOutline: (path: string) =>
+    fetch(`/api/pdf-study/outline?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
   uploadAsset: (path: string, dataB64: string, mime: string) =>
     fetch('/api/pdf-study/asset', {
       method: 'POST',

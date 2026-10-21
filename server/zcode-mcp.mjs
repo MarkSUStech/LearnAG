@@ -52,13 +52,15 @@ const TOOLS = [
   {
     name: 'search_images',
     description:
-      '联网搜索真实图片并按图文语义相关度重排（本地 SigLIP 模型）。返回图片列表（标题/原图链接/缩略图/来源页/相关度）。' +
-      '为笔记配真实图片（照片/实物/网络示意图）时使用；query 建议用英文。拿到结果后用 download_image 下载选中的图。',
+      '默认优先检索本地文件名、笔记图注与PDF图片来源，无匹配再联网。source可指定local/web。返回本地path或网络候选及出处；网络图先download_image，本地图read_image核对后使用。',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: '图片检索词，英文效果最佳（对象+图类型，如 "transformer architecture diagram"）' },
         count: { type: 'number', description: '返回条数，默认 6，最多 10' },
+        source: { type: 'string', enum: ['auto', 'local', 'web'] },
+        providers: { type: 'array', maxItems: 7, items: { type: 'string', enum: ['wikimedia', 'openverse', 'europepmc', 'openstax', 'servier', 'bioicons', 'wellcome'] } },
+        folder: { type: 'string', description: '本地目录前缀，可选' },
       },
       required: ['query'],
     },
@@ -73,20 +75,28 @@ const TOOLS = [
       properties: {
         url: { type: 'string', description: '图片直链（search_images 结果里的 image_url；下载失败可改用缩略图 thumb_url）' },
         path: { type: 'string', description: '保存路径（vault 内相对路径）。默认自动命名到 assets/images/' },
+        page_url: { type: 'string' }, title: { type: 'string' }, author: { type: 'string' }, license: { type: 'string' },
+        license_url: { type: 'string' }, provider: { type: 'string' }, caption: { type: 'string' }, rights_note: { type: 'string' },
       },
       required: ['url'],
     },
   },
   {
+    name: 'read_image',
+    description: '查看本地图片并返回实际图像，可用归一化crop裁切教材图，保留来源；核对内容后再嵌入笔记。',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, crop: { type: 'array', items: { type: 'number' }, minItems: 4, maxItems: 4, description: '[x,y,width,height]，0–1内' } }, required: ['path'] },
+  },
+  {
     name: 'extract_pdf_images',
     description:
-      '提取用户知识库中一篇 PDF 的全部内嵌图片（教材插图/图表/照片），解码为 PNG 存入 assets/pdf/<PDF名>/ 并返回清单（文件/页码/尺寸）。' +
-      '为笔记配教材原图时使用；重复提取直接返回已有清单。嵌入时注明来源 PDF 与页码。',
+      '提取 PDF 内嵌位图；指定 pages + mode=page 可导出含矢量图与图注的整页，最多12页。默认auto在指定页无位图时回退整页；无pages仅扫描内嵌位图。返回状态、PNG路径、页码、尺寸与kind。0张不等于接口故障；只引用成功路径并注明来源。',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'PDF 在 vault 内的相对路径' },
         min_size: { type: 'number', description: '图片最小边长（像素），默认 200，过滤小图标' },
+        pages: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 12, description: 'PDF实际页码，从1开始；整页导出必须指定' },
+        mode: { type: 'string', enum: ['auto', 'embedded', 'page'], description: '默认auto；embedded内嵌位图，page整页导出' },
         force: { type: 'boolean', description: '已提取过时是否强制重新提取' },
       },
       required: ['path'],
@@ -172,9 +182,20 @@ async function callTool(name, args) {
     const r = await res.json().catch(() => ({}))
     return { content: [{ type: 'text', text: JSON.stringify(r) }] }
   }
+  if (name === 'read_image') {
+    const res = await post('/internal/zcode/img-read', args, 30000).catch(() => null)
+    const result = res ? await res.json().catch(() => ({})) : {}
+    if (!res?.ok) return { isError: true, content: [{ type: 'text', text: '读图失败：' + (result.error || '服务不可达') }] }
+    const { base64, ...metadata } = result
+    return { content: [{ type: 'text', text: JSON.stringify(metadata) }, { type: 'image', data: base64, mimeType: 'image/png' }] }
+  }
   if (name === 'extract_pdf_images') {
-    const res = await post('/internal/zcode/pdf-images', args, 180000).catch(() => null)
-    if (!res || !res.ok) return { isError: true, content: [{ type: 'text', text: 'PDF 图片提取失败；请确认 path 是 vault 内的 PDF，或放弃该方式。' }] }
+    let networkError = ''
+    const res = await post('/internal/zcode/pdf-images', args, 180000).catch(e => { networkError = String(e?.message || e); return null })
+    if (!res || !res.ok) {
+      const result = res ? await res.json().catch(() => ({})) : {}
+      return { isError: true, content: [{ type: 'text', text: 'PDF 图片提取失败：' + (result.error || networkError || `HTTP ${res?.status || '不可达'}`) }] }
+    }
     const r = await res.json().catch(() => ({}))
     return { content: [{ type: 'text', text: JSON.stringify(r) }] }
   }
