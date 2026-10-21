@@ -26,3 +26,11 @@
 研究了 Thesys 的 [library.ts](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/library.ts)、[layout.tsx](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/components/layout.tsx)、[controls.tsx](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/components/controls.tsx)、[theme.css](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/components/theme.css)、[components.css](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/components/components.css) 和 [prompt-options.ts](https://github.com/thesysdev/open-intelligent-ui/blob/main/src/lib/prompt-options.ts)。借鉴分类注册、少量布局基础件、三级间距与本地状态更新的思路。实现仍基于本项目 AST、React 和 CSS，不引入 OpenUI Lang、其运行时或任意表达式求值。
 
 升级后的文档、验证及限制见 [设计系统说明](noteui-design-system.md)。
+
+## 交付对照（2026-10-21）
+
+对照 `shared/noteuiRegistry.js`、正式组件库、渲染注册表、基础件与两份 NoteUI 样式，修改前28类均保留，新增9类布局及受控SVG，共38类。Registry已成为参数白名单、组件说明和AI语法的共同来源；开发Gallery复用正式模板、渲染和本地状态，正式插入仍调用原有笔记编辑回调。
+
+正式界面继续使用 `tokens.css` 的紫色操作、系统字体与浅深主题；新增通用层以8 / 16 / 24px组织间距，文章默认无外壳，独立实验保留面板。根目录 `DESIGN.md` 与 `.impeccable/design.json` 明确属于暖色工作台预览，本轮保持原样，没有将预览身份推广到正式组件库。旧组件的局部字号、过渡和状态样式仍按其源码记录，不提升为新增通用层规则。
+
+代码导读的无讲解行保持静态，长序列标签使用可换行矩形；有界组合、SVG白名单及键盘状态与设计说明一致。交付复核结论为 `ship`，无要求修复的材料性问题；测试、截图和既存类型检查限制见 [验证记录](noteui-verification.md)。

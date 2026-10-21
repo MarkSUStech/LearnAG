@@ -12,7 +12,7 @@
 
 ## 视觉规范
 
-`src/styles/noteui-system.css` 为新增组件提供语义别名，颜色仍由原有 `tokens.css` 和作用域主题决定。普通图表、表格、代码和说明采用文章式区块；实验、闪卡、测验等独立任务可保留轻边框面板。Card 是可选分组，不是默认外壳。
+`src/styles/noteui-system.css` 为新增通用层提供语义别名，颜色仍由原有 `tokens.css` 和作用域主题决定，保留正式应用的紫色操作与系统字体。根目录 `DESIGN.md` 和 `.impeccable/design.json` 只约束 `?design=workspace` 暖色预览，本次未改写其身份或令牌。普通图表、表格、代码和说明采用文章式区块；实验、闪卡、测验等独立任务可保留轻边框面板。Card 是可选分组，不是默认外壳。下表记录通用层令牌，旧组件保留其已实现的局部字号和状态样式。
 
 | 语义 | Token / 值 |
 |---|---|
@@ -23,10 +23,10 @@
 | 圆角 | small 4px、medium 8px、large 12px |
 | 字号 | 标题 16px、正文 14px、说明 / 代码 12px、数字 24px |
 | 字体 | 沿用系统字体；代码使用 Cascadia Code / Consolas；数值使用等宽数字 |
-| 动效 | 160ms，尊重 `prefers-reduced-motion`；滚动翻页在减少动画时直接定位 |
-| 阴影 | 轻阴影仅用于弹出层；普通内容以间距分组 |
+| 动效 | 通用层令牌 160ms；历史组件保留各自过渡。尊重 `prefers-reduced-motion`，滚动翻页在减少动画时直接定位 |
+| 阴影 | 通用层轻阴影用于旁注浮层；组件库沿用现有模态阴影，普通内容以间距分组 |
 
-布局默认决定间距；AI 仅能选择 `inner/group/section`，不能输出像素、CSS 或事件。Row 自动换行，Grid 根据容器宽度折叠，Carousel 有滚动、按钮和方向键。Popover 支持 Escape、外部点击、关闭后焦点恢复，并避开滚动容器裁切。
+布局默认决定间距；AI 仅能选择 `inner/group/section`，不能输出像素、CSS 或事件。Row 自动换行；Grid 在容器宽度≤600px时变为单列，601–900px时三 / 四列变为两列。Carousel 有滚动、按钮及方向键 / Home / End。Popover 支持 Escape、外部点击和关闭按钮；Escape或关闭按钮将焦点还给触发器，并通过 Portal 避开滚动容器裁切。
 
 ## 组合语法
 
@@ -54,7 +54,7 @@
 
 ## AI 可自定义的 SVG
 
-`ui:svg` 接收五列表格：形状、位置、尺寸或终点、文字、颜色。支持 `rect / circle / ellipse / line / arrow / text / polygon / path`。尺寸为有限坐标；width 默认640，合法160–1200；height 默认360，合法120–900。颜色限于语义色和六个图表系列色，不能写任意 SVG、HTML、CSS、外链、事件或脚本。
+`ui:svg` 接收五列表格：形状、位置、尺寸或终点、文字、颜色。支持 `rect / circle / ellipse / line / arrow / text / polygon / path`。图元坐标必须有限；画布 width 默认640，合法整数160–1200；height 默认360，合法整数120–900。颜色限于语义色、blue / red 和六个图表系列色，不能写任意 SVG、HTML、CSS、外链、事件或脚本。
 
 ```markdown
 <!-- ui:svg width=400 height=160 title="节点连接" -->

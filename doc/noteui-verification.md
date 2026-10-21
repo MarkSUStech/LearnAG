@@ -1,6 +1,17 @@
 # NoteUI 验证与交付记录
 
-验证日期：2026-10-19。
+既有验证日期：2026-10-19；以下历史记录保留当时的组件数与验证结果。
+
+## 可组合系统交付复核（2026-10-21）
+
+复核源码为 `fe43c4d`。对照共享Registry、正式组件库、渲染器、基础件及样式，确认28类原有组件、9类布局与1类受控SVG共38类；Gallery复用正式模板与渲染器。两份系统说明与实现一致，仅细化通用令牌作用域、Grid容器断点、SVG整数画布尺寸及Popover焦点返回条件。
+
+- 自动回归102 / 102通过、0失败：[测试日志](../.impeccable/review/release-tests.log)。该提交的生产构建通过，用时1分2秒：[构建日志](../.impeccable/review/release-build.log)。
+- 浏览器留档全部通过：组合 / SVG20项、旧学习组件30项、组件库8项，见 [系统](../.impeccable/review/system/browser-system.txt)、[旧组件](../.impeccable/review/system/browser-legacy.txt)、[组件库](../.impeccable/review/system/browser-catalog.txt)。交付执行者另观察到18项交互回归通过，未并入以上留档计数。
+- 留存1440×900桌面组合、SVG及深色SVG截图，以及390×844手机SVG截图，位于 `.impeccable/review/system/`。最终 [审查记录](../.impeccable/review/system/finish-review.md) 结论为 `ship`，无要求修复的材料性问题。
+- [类型检查日志](../.impeccable/review/system-types.log) 仍只有既存的 `lspBridge.ts:237`、`:320` 两处错误，无新增NoteUI类型错误；生产构建保留既存Mermaid / Monaco分块警告。
+
+正式界面沿用紫色操作、系统字体及现有明暗主题；暖色预览专属的 `DESIGN.md` 和 `.impeccable/design.json` 保持原样。本次文档复核未改实现或重新运行模型调用；交互仍为阅读会话内状态，Markdown仍是笔记数据源。
 
 ## 已验证
 
